@@ -1,0 +1,12 @@
+[submodule "open source codes/tensorflow-speech-recognition"]
+	path = open source codes/tensorflow-speech-recognition
+	url = git@github.com:pannous/tensorflow-speech-recognition.git
+[submodule "open source codes/eesen"]
+	path = open source codes/eesen
+	url = git@github.com:srvk/eesen.git
+[submodule "DeepSpeech"]
+	path = open source codes/DeepSpeech
+	url = git@github.com:mozilla/DeepSpeech.git
+[submodule "open source codes/speech-to-text-wavenet"]
+	path = open source codes/speech-to-text-wavenet
+	url = git@github.com:buriburisuri/speech-to-text-wavenet.git
