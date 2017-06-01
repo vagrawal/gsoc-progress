@@ -1,5 +1,7 @@
 # Adapted from Currie32's text summarization tutorial
 import tensorflow as tf
+from tensorflow.python.layers.core import Dense
+from tensorflow.python.ops.rnn_cell_impl import _zero_state_tensors
 
 def encoding_layer(rnn_size, sequence_length, num_layers, rnn_inputs, keep_prob):
     '''Create the encoding layer'''
@@ -67,7 +69,7 @@ def inference_decoding_layer(embeddings, start_token, end_token, dec_cell, initi
     
     return inference_logits
 
-def decoding_layer(dec_input, embeddings, enc_output, enc_state, vocab_size, text_length, output_length, 
+def decoding_layer(dec_input, enc_output, enc_state, vocab_size, text_length, output_length, 
                    max_output_length, rnn_size, vocab_to_int, keep_prob, batch_size, num_layers):
     '''Create the decoding cell and attention for the training and inference decoding layers'''
     
@@ -104,8 +106,7 @@ def decoding_layer(dec_input, embeddings, enc_output, enc_state, vocab_size, tex
                                                   vocab_size, 
                                                   max_output_length)
     with tf.variable_scope("decode", reuse=True):
-        inference_logits = inference_decoding_layer(embeddings,  
-                                                    vocab_to_int['<GO>'], 
+        inference_logits = inference_decoding_layer(vocab_to_int['<GO>'], 
                                                     vocab_to_int['<EOS>'],
                                                     dec_cell, 
                                                     initial_state, 
@@ -115,19 +116,18 @@ def decoding_layer(dec_input, embeddings, enc_output, enc_state, vocab_size, tex
 
     return training_logits, inference_logits
 
-def seq2seq_model(input_data, target_data, keep_prob, text_length, output_length, max_output_length, 
+def seq2seq_model(input_data, target_data, keep_prob, input_lengths, output_lengths, max_output_length, 
                   vocab_size, rnn_size, num_layers, vocab_to_int, batch_size):
     '''Use the previous functions to create the training and inference logits'''
 
-    enc_output, enc_state = encoding_layer(rnn_size, text_length, num_layers, input_data, keep_prob)
+    enc_output, enc_state = encoding_layer(rnn_size, input_lengths, num_layers, input_data, keep_prob)
         
-    training_logits, inference_logits  = decoding_layer(dec_input, 
-                                                        embeddings,
+    training_logits, inference_logits  = decoding_layer(target_data, 
                                                         enc_output,
                                                         enc_state, 
                                                         vocab_size, 
-                                                        text_length, 
-                                                        output_length, 
+                                                        input_lengths, 
+                                                        output_lengths, 
                                                         max_output_length,
                                                         rnn_size, 
                                                         vocab_to_int, 
