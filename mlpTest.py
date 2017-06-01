@@ -15,7 +15,7 @@ def mlp1():
 	model.add(Dense(1000, activation='sigmoid', input_dim=40))
 	model.add(Dense(1000, activation='sigmoid'))
 	model.add(Dense(3000, activation='softmax'))
-	model.compile(optimizer='adagrad',
+	model.compile(optimizer='sgd',
 	              loss='categorical_crossentropy',
 	              metrics=['accuracy'])
 	return model
@@ -64,13 +64,8 @@ plt.plot(history.history['acc'])
 plt.title('model accuracy')
 plt.ylabel('accuracy')
 plt.xlabel('epoch')
-plt.savefig('mlp1_acc.png')
-plt.plot(history.history['loss'])
-plt.title('model loss')
-plt.ylabel('loss')
-plt.xlabel('epoch')
-plt.savefig('mlp1_loss.png')
-model.save("mlp_randomAlign.h5")
+plt.savefig('mlp1_sgd_acc.png')
+
 
 model = load_model("mlp_randomAlign.h5")
 x_test = data['X_Test'][:250000]
