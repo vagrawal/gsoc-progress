@@ -15,7 +15,7 @@ def mlp1():
 	model.add(Dense(1000, activation='relu', input_dim=40))
 	model.add(Dense(1000, activation='relu'))
 	model.add(Dense(3000, activation='softmax'))
-	model.compile(optimizer='sgd',
+	model.compile(optimizer='adagrad',
 	              loss='categorical_crossentropy',
 	              metrics=['accuracy'])
 	return model
@@ -53,24 +53,24 @@ def mlp3():
 	return model
 data = np.load('wsj0_randlabels.npz')
 model = mlp1()
-# plot_model(model, to_file='mlp3_model.png')
-x_train = data['X_Train'][:1000000]
-y_train = data['Y_Train'][:1000000]
-y_train = to_categorical(y_train, num_classes = 3000)
-history = model.fit(x_train,y_train,epochs=10,batch_size=20000)
-print(history.history.keys())
-# summarize history for accuracy
-plt.plot(history.history['acc'])
-plt.title('model accuracy')
-plt.ylabel('accuracy')
-plt.xlabel('epoch')
-plt.savefig('mlp1_relu_acc.png')
+plot_model(model, to_file='mlp3_model.png')
+# x_train = data['X_Train'][:1000000]
+# y_train = data['Y_Train'][:1000000]
+# y_train = to_categorical(y_train, num_classes = 3000)
+# history = model.fit(x_train,y_train,epochs=10,batch_size=20000)
+# print(history.history.keys())
+# # summarize history for accuracy
+# plt.plot(history.history['acc'])
+# plt.title('model accuracy')
+# plt.ylabel('accuracy')
+# plt.xlabel('epoch')
+# plt.savefig('mlp1_relu_acc.png')
 
 
-model = load_model("mlp_randomAlign.h5")
-x_test = data['X_Test'][:250000]
-y_test = data['Y_Test'][:250000]
-y_test = to_categorical(y_test, num_classes = 3000)
-with tf.device('/gpu:0'):
-	score = model.evaluate(x_test, y_test, batch_size=2000)
-print score
+# model = load_model("mlp_randomAlign.h5")
+# x_test = data['X_Test'][:250000]
+# y_test = data['Y_Test'][:250000]
+# y_test = to_categorical(y_test, num_classes = 3000)
+# with tf.device('/gpu:0'):
+# 	score = model.evaluate(x_test, y_test, batch_size=2000)
+# print score
