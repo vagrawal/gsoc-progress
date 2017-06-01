@@ -10,10 +10,10 @@ def fileToLabels(data, nPhones=30):
 		labels += [np.random.randint(0,high=3000)]*min(currSegLen,nFrames - len(labels))
 	return labels
 root = '/home/mshah1/wsj/wsj0/'
-fileList = root + 'wsj0.wavlist'
+fileList = root + 'wsj0.mlslist'
 with open(fileList,'r') as f:
 	files = f.readlines()
-	files = map(lambda x: root + x.strip() + '.mls', files)
+	files = map(lambda x: root + x.strip(), files)
 allData = []
 allLabels = []
 for f in files:
