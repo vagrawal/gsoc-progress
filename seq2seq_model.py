@@ -47,13 +47,14 @@ def training_decoding_layer(dec_input, output_length, dec_cell, initial_state, o
                                                            maximum_iterations=max_output_length)
     return training_logits
 
-def inference_decoding_layer(embeddings, start_token, end_token, dec_cell, initial_state, output_layer,
+def inference_decoding_layer(vocab_size, start_token, end_token, dec_cell, initial_state, output_layer,
                              max_output_length, batch_size):
     '''Create the inference logits'''
     
     start_tokens = tf.tile(tf.constant([start_token], dtype=tf.int32), [batch_size], name='start_tokens')
+
     
-    inference_helper = tf.contrib.seq2seq.GreedyEmbeddingHelper(embeddings,
+    inference_helper = tf.contrib.seq2seq.GreedyEmbeddingHelper(tf.eye(vocab_size),
                                                                 start_tokens,
                                                                 end_token)
                 
@@ -97,7 +98,7 @@ def decoding_layer(dec_input, enc_output, enc_state, vocab_size, text_length, ou
                                                                     _zero_state_tensors(rnn_size, 
                                                                                         batch_size, 
                                                                                         tf.float32)) 
-    with tf.variable_scope("decode"):
+    with tf.variable_scope("decode_train"):
         training_logits = training_decoding_layer(dec_input, 
                                                   output_length, 
                                                   dec_cell, 
@@ -105,8 +106,9 @@ def decoding_layer(dec_input, enc_output, enc_state, vocab_size, text_length, ou
                                                   output_layer,
                                                   vocab_size, 
                                                   max_output_length)
-    with tf.variable_scope("decode", reuse=True):
-        inference_logits = inference_decoding_layer(vocab_to_int['<GO>'], 
+    with tf.variable_scope("decode_inference", reuse=True):
+        inference_logits = inference_decoding_layer(len(vocab_to_int),
+                                                    vocab_to_int['<GO>'], 
                                                     vocab_to_int['<EOS>'],
                                                     dec_cell, 
                                                     initial_state, 
