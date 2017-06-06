@@ -1,0 +1,3 @@
+*.npz
+.h5
+sphinx3/*
