@@ -3,6 +3,14 @@ import tensorflow as tf
 from tensorflow.python.layers.core import Dense
 from tensorflow.python.ops.rnn_cell_impl import _zero_state_tensors
 
+def process_target_data(target_data, vocab_to_int, batch_size):
+    '''Remove the last word id from each batch and concat the <GO> to the begining of each batch'''
+    
+    ending = tf.strided_slice(target_data, [0, 0], [batch_size, -1], [1, 1])
+    dec_input = tf.concat([tf.fill([batch_size, 1], vocab_to_int['<GO>']), ending], 1)
+
+    return dec_input
+
 def encoding_layer(rnn_size, sequence_length, num_layers, rnn_inputs, keep_prob):
     '''Create the encoding layer'''
     
@@ -98,7 +106,7 @@ def decoding_layer(dec_input, enc_output, enc_state, vocab_size, text_length, ou
                                                                     _zero_state_tensors(rnn_size, 
                                                                                         batch_size, 
                                                                                         tf.float32)) 
-    with tf.variable_scope("decode_train"):
+    with tf.variable_scope("decode"):
         training_logits = training_decoding_layer(dec_input, 
                                                   output_length, 
                                                   dec_cell, 
@@ -106,7 +114,7 @@ def decoding_layer(dec_input, enc_output, enc_state, vocab_size, text_length, ou
                                                   output_layer,
                                                   vocab_size, 
                                                   max_output_length)
-    with tf.variable_scope("decode_inference", reuse=True):
+    with tf.variable_scope("decode", reuse=True):
         inference_logits = inference_decoding_layer(len(vocab_to_int),
                                                     vocab_to_int['<GO>'], 
                                                     vocab_to_int['<EOS>'],
@@ -123,7 +131,10 @@ def seq2seq_model(input_data, target_data, keep_prob, input_lengths, output_leng
     '''Use the previous functions to create the training and inference logits'''
 
     enc_output, enc_state = encoding_layer(rnn_size, input_lengths, num_layers, input_data, keep_prob)
-        
+    
+    target_data = process_target_data(target_data, vocab_to_int, batch_size)
+    target_data = tf.nn.embedding_lookup(tf.eye(vocab_size), target_data)
+    
     training_logits, inference_logits  = decoding_layer(target_data, 
                                                         enc_output,
                                                         enc_state, 
