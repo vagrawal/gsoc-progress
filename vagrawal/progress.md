@@ -1,0 +1,11 @@
+## Before 6 June
+
+I extracted features from I adapted a basic bidirectional LSTM model in tensorflow for the speech recognition task.
+
+## 6 June
+
+Experiment with WER
+
+## 7 June
+
+Fixed many of the bugs involved in the model. Now, I can successfully build the model. There is still some problem for the input, and it took much of my 2-3 days to fix many small bugs in the code, and make it compile. Expecting to find WER of the current basic attention based model by tomorrow.
