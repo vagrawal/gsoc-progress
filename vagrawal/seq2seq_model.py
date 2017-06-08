@@ -36,8 +36,7 @@ def encoding_layer(rnn_size, sequence_length, num_layers, rnn_inputs, keep_prob)
     
     return enc_output, enc_state
 
-def training_decoding_layer(dec_input, output_length, dec_cell, initial_state, output_layer, 
-                            vocab_size, max_output_length):
+def training_decoding_layer(dec_input, output_length, dec_cell, initial_state, output_layer, vocab_size):
     '''Create the training logits'''
     
     training_helper = tf.contrib.seq2seq.TrainingHelper(inputs=dec_input,
@@ -51,8 +50,7 @@ def training_decoding_layer(dec_input, output_length, dec_cell, initial_state, o
 
     training_logits, _ = tf.contrib.seq2seq.dynamic_decode(training_decoder,
                                                            output_time_major=False,
-                                                           impute_finished=True,
-                                                           maximum_iterations=max_output_length)
+                                                           impute_finished=True)
     return training_logits
 
 def inference_decoding_layer(vocab_size, start_token, end_token, dec_cell, initial_state, output_layer,
@@ -112,8 +110,7 @@ def decoding_layer(dec_input, enc_output, enc_state, vocab_size, text_length, ou
                                                   dec_cell, 
                                                   initial_state,
                                                   output_layer,
-                                                  vocab_size, 
-                                                  max_output_length)
+                                                  vocab_size)
     with tf.variable_scope("decode", reuse=True):
         inference_logits = inference_decoding_layer(len(vocab_to_int),
                                                     vocab_to_int['<GO>'], 
