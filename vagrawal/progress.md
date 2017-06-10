@@ -13,3 +13,8 @@ Fixed many of the bugs involved in the model. Now, I can successfully build the 
 ## 8 June
 
 Finally got my model to work after fixing so many bugs. Currently, it is single layer bidirectional attention based LSTM. I plan to experiment with complex models now.
+
+## 10 June
+
+- Add code for checkpointing the weights
+- Fix WER
