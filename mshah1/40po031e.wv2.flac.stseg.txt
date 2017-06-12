@@ -1,0 +1,351 @@
+44 phones
+#frames = 349
+    0      -32931  0 SIL
+    1      -29131  1 SIL
+    2      -21946  2 SIL
+    3      -11502  2 SIL
+    4        -661  2 SIL
+    5       -8628  2 SIL
+    6      -15577  2 SIL
+    7       -9964  0 DH SIL AH e
+    8       -9648  1 DH SIL AH e
+    9       -5518  1 DH SIL AH e
+   10       -5875  1 DH SIL AH e
+   11       -9015  2 DH SIL AH e
+   12      -10471  0 AH DH R s
+   13       -2281  0 AH DH R s
+   14       -6865  0 AH DH R s
+   15       -2340  1 AH DH R s
+   16       -2363  2 AH DH R s
+   17       -2079  2 AH DH R s
+   18       -2079  2 AH DH R s
+   19       -2559  0 R AH EY e
+   20      -13034  0 R AH EY e
+   21       -3310  1 R AH EY e
+   22      -13878  1 R AH EY e
+   23       -2627  2 R AH EY e
+   24       -6048  2 R AH EY e
+   25       -2007  2 R AH EY e
+   26       -2644  0 EY R T b
+   27       -4293  1 EY R T b
+   28        -796  1 EY R T b
+   29        -796  1 EY R T b
+   30       -5827  2 EY R T b
+   31       -3186  2 EY R T b
+   32       -1103  2 EY R T b
+   33       -1103  2 EY R T b
+   34       -4222  0 T EY SIL s
+   35       -3813  0 T EY SIL s
+   36      -11286  0 T EY SIL s
+   37       -7762  1 T EY SIL s
+   38       -1978  1 T EY SIL s
+   39      -14518  2 T EY SIL s
+   40       -9274  0 +GARBAGE+
+   41       -4604  0 +GARBAGE+
+   42      -11041  1 +GARBAGE+
+   43       -1047  1 +GARBAGE+
+   44        -269  1 +GARBAGE+
+   45      -18774  2 +GARBAGE+
+   46      -40367  0 F SIL EH e
+   47      -35200  1 F SIL EH e
+   48      -11723  2 F SIL EH e
+   49      -28397  0 EH F L b
+   50      -17688  1 EH F L b
+   51      -12804  1 EH F L b
+   52       -4708  1 EH F L b
+   53       -3959  2 EH F L b
+   54       -3752  2 EH F L b
+   55      -10907  0 L EH T s
+   56       -3714  0 L EH T s
+   57       -3367  1 L EH T s
+   58       -6992  2 L EH T s
+   59       -1666  2 L EH T s
+   60       -1666  2 L EH T s
+   61      -12578  0 T L AH e
+   62       -8496  0 T L AH e
+   63      -11204  0 T L AH e
+   64      -21926  1 T L AH e
+   65      -17674  2 T L AH e
+   66      -10542  2 T L AH e
+   67      -18828  2 T L AH e
+   68       -3163  0 AH T S s
+   69      -11142  1 AH T S s
+   70       -2258  1 AH T S s
+   71       -2258  1 AH T S s
+   72       -2363  2 AH T S s
+   73       -2274  2 AH T S s
+   74       -4349  0 S AH IH e
+   75       -8230  0 S AH IH e
+   76      -20523  0 S AH IH e
+   77      -23103  1 S AH IH e
+   78      -25362  2 S AH IH e
+   79      -11273  2 S AH IH e
+   80       -7585  2 S AH IH e
+   81      -23012  2 S AH IH e
+   82      -18359  0 IH S K b
+   83       -2131  0 IH S K b
+   84      -31791  1 IH S K b
+   85       -5430  1 IH S K b
+   86       -6662  2 IH S K b
+   87       -2830  0 K IH S b
+   88       -2097  0 K IH S b
+   89       -6703  0 K IH S b
+   90      -25483  1 K IH S b
+   91       -8987  2 K IH S b
+   92      -48438  0 S K SIL s
+   93      -42541  1 S K SIL s
+   94      -12984  2 S K SIL s
+   95       -1186  2 S K SIL s
+   96       -7913  0 +NOISE+
+   97       -7980  1 +NOISE+
+   98       -9355  2 +NOISE+
+   99      -14009  0 P SIL ER e
+  100      -11823  0 P SIL ER e
+  101      -33265  1 P SIL ER e
+  102       -7548  2 P SIL ER e
+  103       -1307  2 P SIL ER e
+  104       -3752  0 ER P S b
+  105       -6701  0 ER P S b
+  106       -3594  1 ER P S b
+  107       -1133  1 ER P S b
+  108       -4146  2 ER P S b
+  109       -4677  2 ER P S b
+  110      -10197  2 ER P S b
+  111       -3768  0 S ER EH b
+  112       -1438  0 S ER EH b
+  113       -3584  1 S ER EH b
+  114       -6550  1 S ER EH b
+  115       -7892  2 S ER EH b
+  116      -21698  2 S ER EH b
+  117      -16435  2 S ER EH b
+  118       -1186  2 S ER EH b
+  119       -8891  2 S ER EH b
+  120      -24118  0 EH S N b
+  121      -21010  0 EH S N b
+  122       -5815  1 EH S N b
+  123       -1212  1 EH S N b
+  124       -3959  2 EH S N b
+  125       -1764  2 EH S N b
+  126       -2964  0 N EH T b
+  127       -2117  0 N EH T b
+  128       -2117  0 N EH T b
+  129       -2516  1 N EH T b
+  130       -3555  2 N EH T b
+  131      -11171  0 T N IH s
+  132       -4192  1 T N IH s
+  133       -9015  1 T N IH s
+  134      -10333  2 T N IH s
+  135      -22863  2 T N IH s
+  136       -9210  2 T N IH s
+  137       -7897  2 T N IH s
+  138       -2887  2 T N IH s
+  139       -5139  0 IH T N e
+  140       -2131  0 IH T N e
+  141       -5929  1 IH T N e
+  142       -2197  2 IH T N e
+  143       -4618  2 IH T N e
+  144      -10666  0 N IH N s
+  145       -2516  1 N IH N s
+  146      -16305  2 N IH N s
+  147      -25839  2 N IH N s
+  148      -40265  2 N IH N s
+  149      -23670  0 N N OW e
+  150      -25438  1 N N OW e
+  151      -17242  2 N N OW e
+  152       -2030  2 N N OW e
+  153       -2617  0 OW N V b
+  154       -1040  0 OW N V b
+  155       -4389  1 OW N V b
+  156        -878  1 OW N V b
+  157       -9988  2 OW N V b
+  158       -1275  2 OW N V b
+  159       -4610  0 V OW EH b
+  160      -11044  0 V OW EH b
+  161      -15453  1 V OW EH b
+  162       -5374  2 V OW EH b
+  163       -5417  2 V OW EH b
+  164       -1728  2 V OW EH b
+  165       -9018  0 EH V M b
+  166       -1462  0 EH V M b
+  167       -1462  0 EH V M b
+  168       -3075  0 EH V M b
+  169       -3575  1 EH V M b
+  170      -19074  2 EH V M b
+  171       -8253  0 M EH B b
+  172       -1775  0 M EH B b
+  173       -2948  1 M EH B b
+  174       -1930  1 M EH B b
+  175       -1930  1 M EH B b
+  176       -2739  2 M EH B b
+  177       -2739  0 B M ER b
+  178       -1829  0 B M ER b
+  179       -2873  1 B M ER b
+  180       -2158  2 B M ER b
+  181       -1948  0 ER B N s
+  182       -1386  0 ER B N s
+  183       -3594  1 ER B N s
+  184       -1133  1 ER B N s
+  185       -4146  2 ER B N s
+  186       -1299  2 ER B N s
+  187       -3768  0 N ER AY e
+  188       -3522  1 N ER AY e
+  189       -2117  1 N ER AY e
+  190       -2117  1 N ER AY e
+  191       -2516  2 N ER AY e
+  192       -2617  0 AY N N b
+  193       -1125  0 AY N N b
+  194      -16946  1 AY N N b
+  195       -4869  2 AY N N b
+  196        -854  2 AY N N b
+  197        -854  2 AY N N b
+  198        -854  2 AY N N b
+  199       -4955  0 N AY T b
+  200       -2117  0 N AY T b
+  201       -2516  1 N AY T b
+  202       -2516  2 N AY T b
+  203       -8124  2 N AY T b
+  204       -8249  0 T N IY b
+  205       -5401  1 T N IY b
+  206       -9627  1 T N IY b
+  207      -26146  1 T N IY b
+  208      -18500  2 T N IY b
+  209      -28350  2 T N IY b
+  210      -22177  2 T N IY b
+  211      -20464  2 T N IY b
+  212      -27529  0 IY T N b
+  213      -23630  1 IY T N b
+  214      -11212  2 IY T N b
+  215       -3789  0 N IY EY s
+  216       -2516  1 N IY EY s
+  217       -2117  1 N IY EY s
+  218       -2516  2 N IY EY s
+  219       -2030  2 N IY EY s
+  220       -2030  2 N IY EY s
+  221       -2617  0 EY N T e
+  222      -21296  1 EY N T e
+  223      -11560  2 EY N T e
+  224       -6378  2 EY N T e
+  225       -4840  0 T EY IY b
+  226      -15150  0 T EY IY b
+  227       -9480  0 T EY IY b
+  228       -8346  1 T EY IY b
+  229       -2679  2 T EY IY b
+  230      -21894  2 T EY IY b
+  231       -1633  2 T EY IY b
+  232       -5671  0 IY T SIL s
+  233      -12800  1 IY T SIL s
+  234       -4146  2 IY T SIL s
+  235       -1856  2 IY T SIL s
+  236      -14362  0 +NOISE+
+  237       -7622  1 +NOISE+
+  238      -15129  2 +NOISE+
+  239      -16049  2 +NOISE+
+  240      -28929  0 S SIL IH e
+  241      -18271  1 S SIL IH e
+  242      -10655  1 S SIL IH e
+  243       -1449  1 S SIL IH e
+  244      -11695  1 S SIL IH e
+  245      -17021  2 S SIL IH e
+  246       -4425  0 IH S K b
+  247      -29873  0 IH S K b
+  248       -3446  0 IH S K b
+  249      -18647  1 IH S K b
+  250       -8462  1 IH S K b
+  251       -2427  1 IH S K b
+  252       -2197  2 IH S K b
+  253       -1861  2 IH S K b
+  254       -1861  2 IH S K b
+  255      -20532  0 K IH S b
+  256       -4755  0 K IH S b
+  257       -8171  1 K IH S b
+  258      -19808  1 K IH S b
+  259      -23508  2 K IH S b
+  260      -21073  2 K IH S b
+  261      -45786  0 S K SIL s
+  262      -37195  1 S K SIL s
+  263      -11541  2 S K SIL s
+  264       -1186  2 S K SIL s
+  265       -3957  2 S K SIL s
+  266      -13458  2 S K SIL s
+  267       -5838  2 S K SIL s
+  268       -5106  2 S K SIL s
+  269       -1186  2 S K SIL s
+  270       -1186  2 S K SIL s
+  271       -7695  0 +NOISE+
+  272       -4128  1 +NOISE+
+  273       -5418  1 +NOISE+
+  274       -7118  2 +NOISE+
+  275      -16963  2 +NOISE+
+  276      -33413  0 P SIL IH e
+  277      -37232  1 P SIL IH e
+  278       -3403  2 P SIL IH e
+  279       -1307  2 P SIL IH e
+  280       -1307  2 P SIL IH e
+  281       -3752  0 IH P R b
+  282       -2131  0 IH P R b
+  283       -2131  0 IH P R b
+  284       -2500  1 IH P R b
+  285       -2427  1 IH P R b
+  286       -2197  2 IH P R b
+  287       -1861  2 IH P R b
+  288       -2830  0 R IH IY b
+  289       -1542  0 R IH IY b
+  290       -3310  1 R IH IY b
+  291       -2021  1 R IH IY b
+  292       -2627  2 R IH IY b
+  293       -2007  2 R IH IY b
+  294       -2644  0 IY R AH b
+  295       -1620  0 IY R AH b
+  296       -3182  1 IY R AH b
+  297       -1133  1 IY R AH b
+  298      -12749  2 IY R AH b
+  299       -3789  0 AH IY D b
+  300       -4756  0 AH IY D b
+  301       -2281  0 AH IY D b
+  302       -2281  0 AH IY D b
+  303       -2340  1 AH IY D b
+  304       -2258  1 AH IY D b
+  305       -2258  1 AH IY D b
+  306       -2363  2 AH IY D b
+  307       -2559  0 D AH SIL s
+  308       -2353  0 D AH SIL s
+  309       -6013  1 D AH SIL s
+  310       -3954  1 D AH SIL s
+  311       -2224  1 D AH SIL s
+  312       -2224  1 D AH SIL s
+  313       -2224  1 D AH SIL s
+  314       -4073  1 D AH SIL s
+  315       -5188  2 D AH SIL s
+  316       -5618  2 D AH SIL s
+  317       -3532  0 +BREATH+
+  318       -2779  0 +BREATH+
+  319        -342  0 +BREATH+
+  320       -1930  0 +BREATH+
+  321        -489  0 +BREATH+
+  322        -342  0 +BREATH+
+  323        -342  0 +BREATH+
+  324        -342  0 +BREATH+
+  325        -342  0 +BREATH+
+  326       -1467  0 +BREATH+
+  327        -342  0 +BREATH+
+  328        -342  0 +BREATH+
+  329        -342  0 +BREATH+
+  330        -692  0 +BREATH+
+  331        -342  0 +BREATH+
+  332        -342  0 +BREATH+
+  333        -342  0 +BREATH+
+  334        -342  0 +BREATH+
+  335        -342  0 +BREATH+
+  336        -342  0 +BREATH+
+  337        -342  0 +BREATH+
+  338        -342  0 +BREATH+
+  339       -3475  0 +BREATH+
+  340       -2045  0 +BREATH+
+  341        -342  0 +BREATH+
+  342        -342  0 +BREATH+
+  343      -17924  1 +BREATH+
+  344      -31188  2 +BREATH+
+  345      -45068  0 SIL
+  346      -33595  1 SIL
+  347      -21134  1 SIL
+  348      -33568  2 SIL
