@@ -190,7 +190,7 @@ with train_graph.as_default():
                 try:
                     input_batch, output_batch, input_lengths_batch, output_lengths_batch = get_next_batch()
                 except:
-                    #tf.logging.info("Error: {}".format(sys.exc_info()[0]))
+                    tf.logging.info("Error: {}".format(sys.exc_info()[0]))
                     tf.logging.info("Epoch {} (likely) completed".format(epoch_i))
                     break
 
@@ -213,7 +213,7 @@ with train_graph.as_default():
                           .format(epoch_i,
                                   num_epochs, 
                                   batch_i,
-                                  batch_loss / display_step, 
+                                  batch_loss, 
                                   batch_time*display_step))
                     batch_loss = 0     
 
@@ -226,11 +226,12 @@ with train_graph.as_default():
                     for i in range(batch_size):
                         real_out = ''.join([vocab[l] for l in output_batch[i, :output_lengths_batch[i] - 1]])
                         pred_out = ''.join([vocab[l] for l in logits[i]])
-                        #pred_out = pred_out.split('<')[0]
+                        pred_out = pred_out.split('<')[0]
                         tot_wer += wer(real_out.split(), pred_out.split())
                         tot_cer += wer(list(real_out), list(pred_out))
-                    tf.logging.info('Sample real output: {}'.format(real_out))
-                    tf.logging.info('Sample predicted output: {}'.format(pred_out))
+
+                        #print("Real output: ", real_out)
+                        #print("Predicted output: ", pred_out)
                     tf.logging.info('WER: {}, CER: {}'.format(tot_wer / batch_size, tot_cer / batch_size))
                     summary = tf.Summary(value=
                         [tf.Summary.Value(tag="WER", simple_value=tot_wer / batch_size),

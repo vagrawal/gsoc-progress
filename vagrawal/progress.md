@@ -23,3 +23,7 @@ Add code for checkpointing the weights and fix many things including WER
 Made the training and evaluation script to run on the cloud. After training for more than 24 hours using GPU, I think the model has still not converged. I am getting WER of around 94% and CER of 72%. I think I need to use beam search instead of greedy search to improve the results. Also attaching the loss over time
 
 ![loss-over-time](images/loss-iter1.png)
+
+# 13 June
+
+Completely relook the architecture, and change many things. Used many bidirectional layers, and used pooling between those. Also made many corrections like logging CER and WER over time. Running the architecture is currently in progress.
