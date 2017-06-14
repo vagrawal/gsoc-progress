@@ -19,20 +19,18 @@ import time
 root = 'gs://wsj-data/wsj0/'
 keep_prob = 0.95
 max_input_len = 1000
-max_output_len = 200
+max_output_len = 150
 rnn_size = 256
-num_layers = 2
-batch_size = 16
-learning_rate = 0.0005
+num_layers = 3
+batch_size = 24
+learning_rate = 0.001
 num_epochs = 5
 
-learning_rate_decay = 0.95
+learning_rate_decay = 0.99985
 min_learning_rate = 0.0005
-display_step = 1 # Check training loss after every display_step batches
-stop_early = 0
-stop = 3 # If the update loss does not decrease in 3 consecutive update checks, stop training
+display_step = 20 # Check training loss after every display_step batches
 
-checkpoint = "gs://wsj-data/checkpoint1"
+checkpoint = "gs://wsj-data/checkpoint37"
 
 
 # In[ ]:
@@ -100,7 +98,7 @@ def get_next_input():
 def pad_sentence_batch(sentence_batch):
     """Pad sentences with <EOS> so that each sentence of a batch has the same length"""
     max_sentence = max([len(sentence) for sentence in sentence_batch]) + 1
-    return [sentence + [vocab_to_int['<EOS>']] * (max_sentence - len(sentence)) for sentence in sentence_batch]
+    return [[vocab_to_int['<GO>']] + sentence + [vocab_to_int['<EOS>']] * (max_sentence - len(sentence)) for sentence in sentence_batch]
 
 def get_next_batch():
     input_batch = np.zeros((batch_size, max_input_len, numcep), 'float32')
@@ -110,11 +108,10 @@ def get_next_batch():
     for i in range(batch_size):
         inp, out = get_next_input()
         inp = inp[:max_input_len]
-        out = out[:max_output_len]
         input_batch[i, :inp.shape[0]] = inp
         output_batch.append(out)
         input_batch_length[i] = inp.shape[0]
-        output_batch_length[i] = len(out) + 1
+        output_batch_length[i] = len(out) + 2
     output_batch = np.asarray(pad_sentence_batch(output_batch))
     return (input_batch, output_batch, input_batch_length, output_batch_length)
 
@@ -176,42 +173,54 @@ with train_graph.as_default():
 # In[ ]:
 
 with train_graph.as_default():
-    with tf.Session() as sess:
-
-        latest = tf.train.latest_checkpoint(checkpoint)
-        tf.train.Saver().restore(sess, latest)
+    with tf.train.MonitoredTrainingSession(checkpoint_dir=checkpoint,
+              save_checkpoint_secs=600,
+              save_summaries_steps=20) as sess:
 
         # If we want to continue training a previous session
         #loader = tf.train.import_meta_graph("./" + checkpoint + '.meta')
         #loader.restore(sess, checkpoint)
+        writer = tf.summary.FileWriter(checkpoint)
 
-        count = 0
-        tot_wer = 0.0
-        tot_cer = 0.0
+        batch_loss = 0.0
         for epoch_i in range(1, num_epochs+1):
-            batch_loss = 0
-            batch_i = 0
             out_file.seek(0)
             while (True):
-                count += 1
-                batch_i += 1
                 try:
                     input_batch, output_batch, input_lengths_batch, output_lengths_batch = get_next_batch()
                 except:
-                    print("Epoch {} completed".format(epoch_i))
+                    #tf.logging.info("Error: {}".format(sys.exc_info()[0]))
+                    tf.logging.info("Epoch {} (likely) completed".format(epoch_i))
                     break
 
                 logits = sess.run(
                     inference_logits,
                     {model_input: input_batch,
                      input_lengths: input_lengths_batch})
+                tot_wer = 0.0
+                tot_cer = 0.0
                 for i in range(batch_size):
                     real_out = ''.join([vocab[l] for l in output_batch[i, :output_lengths_batch[i] - 1]])
                     pred_out = ''.join([vocab[l] for l in logits[i]])
-                    pred_out = pred_out.split('<')[0]
+                    #pred_out = pred_out.split('<')[0]
                     tot_wer += wer(real_out.split(), pred_out.split())
                     tot_cer += wer(list(real_out), list(pred_out))
-                if (count % 10 == 0):
-                    print('WER: {}, CER: {}'.format(tot_wer / (count * batch_size), tot_cer / (count * batch_size)))
-                    print("Real output: ", real_out)
-                    print("Predicted output: ", pred_out)
+                tf.logging.info('Sample real output: {}'.format(real_out))
+                tf.logging.info('Sample predicted output: {}'.format(pred_out))
+                tf.logging.info('WER: {}, CER: {}'.format(tot_wer / batch_size, tot_cer / batch_size))
+
+            # Reduce learning rate, but not below its minimum value
+            learning_rate *= learning_rate_decay
+            if learning_rate < min_learning_rate:
+                learning_rate = min_learning_rate
+
+
+# In[ ]:
+
+get_next_batch()
+
+
+# In[ ]:
+
+
+

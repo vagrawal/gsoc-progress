@@ -29,8 +29,19 @@ def encoding_layer(rnn_size, sequence_length, num_layers, rnn_inputs, keep_prob)
 
     return enc_output, enc_state
 
-def training_decoding_layer(dec_input, output_length, dec_cell, initial_state, output_layer, vocab_size):
+def training_decoding_layer(dec_input, output_length, output_layer, vocab_size,
+        rnn_size, enc_output, text_length, dec_cell, batch_size):
     '''Create the training logits'''
+
+    attn_mech = tf.contrib.seq2seq.BahdanauAttention(rnn_size,
+                                                  enc_output,
+                                                  text_length,
+                                                  normalize=False,
+                                                  name='BahdanauAttention')
+
+    dec_cell = tf.contrib.seq2seq.AttentionWrapper(dec_cell, attn_mech, rnn_size)
+
+    initial_state = dec_cell.zero_state(dtype=tf.float32, batch_size=batch_size)
 
     dec_input = tf.nn.embedding_lookup(tf.eye(vocab_size), dec_input)
 
@@ -43,36 +54,46 @@ def training_decoding_layer(dec_input, output_length, dec_cell, initial_state, o
                                                        initial_state,
                                                        output_layer)
 
-    training_logits, _ = tf.contrib.seq2seq.dynamic_decode(training_decoder,
-                                                           output_time_major=False,
-                                                           impute_finished=True)
+    training_logits, _, _ = tf.contrib.seq2seq.dynamic_decode(training_decoder,
+                                                           output_time_major=False)
     return training_logits
 
-def inference_decoding_layer(vocab_size, start_token, end_token, dec_cell, initial_state, output_layer,
-                             max_output_length, batch_size):
+def inference_decoding_layer(vocab_size, start_token, end_token, output_layer,
+                             max_output_length, batch_size, beam_width,
+                             rnn_size, enc_output, text_length, dec_cell):
     '''Create the inference logits'''
+    enc_output = tf.contrib.seq2seq.tile_batch(enc_output, beam_width)
+    text_length = tf.contrib.seq2seq.tile_batch(text_length, beam_width)
 
-    start_tokens = tf.tile(tf.constant([start_token], dtype=tf.int32), [batch_size], name='start_tokens')
+    attn_mech = tf.contrib.seq2seq.BahdanauAttention(rnn_size,
+                                                  enc_output,
+                                                  text_length,
+                                                  normalize=False,
+                                                  name='BahdanauAttention')
 
+    dec_cell = tf.contrib.seq2seq.AttentionWrapper(dec_cell, attn_mech, rnn_size)
 
-    inference_helper = tf.contrib.seq2seq.GreedyEmbeddingHelper(tf.eye(vocab_size),
-                                                                start_tokens,
-                                                                end_token)
+    initial_state = dec_cell.zero_state(dtype=tf.float32, batch_size=batch_size * beam_width)
 
-    inference_decoder = tf.contrib.seq2seq.BasicDecoder(dec_cell,
-                                                        inference_helper,
-                                                        initial_state,
-                                                        output_layer)
+    start_tokens = tf.fill([batch_size], start_token, name='start_tokens')
 
-    inference_logits, _ = tf.contrib.seq2seq.dynamic_decode(inference_decoder,
+    inference_decoder = tf.contrib.seq2seq.BeamSearchDecoder(dec_cell,
+                                                             tf.eye(vocab_size),
+                                                             start_tokens,
+                                                             end_token,
+                                                             initial_state,
+                                                             beam_width,
+                                                             output_layer)
+
+    inference_logits, _, _ = tf.contrib.seq2seq.dynamic_decode(inference_decoder,
                                                             output_time_major=False,
-                                                            impute_finished=True,
                                                             maximum_iterations=max_output_length)
 
     return inference_logits
 
 def decoding_layer(dec_input, enc_output, enc_state, vocab_size, text_length, output_length,
-                   max_output_length, rnn_size, vocab_to_int, keep_prob, batch_size, num_layers):
+                   max_output_length, rnn_size, vocab_to_int, keep_prob,
+                   batch_size, num_layers, beam_width):
     '''Create the decoding cell and attention for the training and inference decoding layers'''
 
     with tf.variable_scope('decoder'):
@@ -84,41 +105,34 @@ def decoding_layer(dec_input, enc_output, enc_state, vocab_size, text_length, ou
     output_layer = Dense(vocab_size,
                          kernel_initializer = tf.truncated_normal_initializer(mean = 0.0, stddev=0.1))
 
-    attn_mech = tf.contrib.seq2seq.BahdanauAttention(rnn_size,
-                                                  enc_output,
-                                                  text_length,
-                                                  normalize=False,
-                                                  name='BahdanauAttention')
-
-    dec_cell = tf.contrib.seq2seq.DynamicAttentionWrapper(dec_cell,
-                                                          attn_mech,
-                                                          rnn_size)
-
-    initial_state = tf.contrib.seq2seq.DynamicAttentionWrapperState(enc_state[0],
-                                                                    _zero_state_tensors(rnn_size,
-                                                                                        batch_size,
-                                                                                        tf.float32))
     with tf.variable_scope("decode"):
         training_logits = training_decoding_layer(dec_input,
                                                   output_length,
-                                                  dec_cell,
-                                                  initial_state,
                                                   output_layer,
-                                                  vocab_size)
+                                                  vocab_size,
+                                                  rnn_size,
+                                                  enc_output,
+                                                  text_length,
+                                                  dec_cell,
+                                                  batch_size)
     with tf.variable_scope("decode", reuse=True):
         inference_logits = inference_decoding_layer(len(vocab_to_int),
                                                     vocab_to_int['<GO>'],
                                                     vocab_to_int['<EOS>'],
-                                                    dec_cell,
-                                                    initial_state,
                                                     output_layer,
                                                     max_output_length,
-                                                    batch_size)
+                                                    batch_size,
+                                                    beam_width,
+                                                    rnn_size,
+                                                    enc_output,
+                                                    text_length,
+                                                    dec_cell)
 
     return training_logits, inference_logits
 
 def seq2seq_model(input_data, target_data, keep_prob, input_lengths, output_lengths, max_output_length,
-                  vocab_size, rnn_size, num_layers, vocab_to_int, batch_size):
+                  vocab_size, rnn_size, num_layers, vocab_to_int, batch_size,
+                  beam_width):
     '''Use the previous functions to create the training and inference logits'''
 
     enc_output, enc_state = encoding_layer(rnn_size, input_lengths, num_layers, input_data, keep_prob)
@@ -134,6 +148,7 @@ def seq2seq_model(input_data, target_data, keep_prob, input_lengths, output_leng
                                                         vocab_to_int,
                                                         keep_prob,
                                                         batch_size,
-                                                        num_layers)
+                                                        num_layers,
+                                                        beam_width)
 
     return training_logits, inference_logits
