@@ -32,7 +32,7 @@ learning_rate_decay = 0.99985
 min_learning_rate = 0.0005
 display_step = 20 # Check training loss after every display_step batches
 
-checkpoint = "gs://wsj-data/checkpoint53" 
+checkpoint = "gs://wsj-data/checkpoint59" 
 
 
 # In[ ]:
@@ -104,7 +104,7 @@ def get_next_input():
 def pad_sentence_batch(sentence_batch):
     """Pad sentences with <EOS> so that each sentence of a batch has the same length"""
     max_sentence = max([len(sentence) for sentence in sentence_batch]) + 1
-    return [[vocab_to_int['<GO>']] + sentence + [vocab_to_int['<EOS>']] * (max_sentence - len(sentence)) for sentence in sentence_batch]
+    return [sentence + [vocab_to_int['<EOS>']] * (max_sentence - len(sentence)) for sentence in sentence_batch]
 
 def get_next_batch():
     input_batch = np.zeros((batch_size, max_input_len, numcep), 'float32')
@@ -118,7 +118,7 @@ def get_next_batch():
         input_batch[pos, :inp.shape[0]] = inp
         output_batch.append(out)
         input_batch_length[pos] = inp.shape[0]
-        output_batch_length[pos] = len(out) + 2
+        output_batch_length[pos] = len(out) + 1
     output_batch = np.asarray(pad_sentence_batch(output_batch))
     return (input_batch, output_batch, input_batch_length, output_batch_length)
 
@@ -251,4 +251,9 @@ with train_graph.as_default():
             learning_rate *= learning_rate_decay
             if learning_rate < min_learning_rate:
                 learning_rate = min_learning_rate
+
+
+# In[ ]:
+
+
 

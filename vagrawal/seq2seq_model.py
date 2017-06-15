@@ -3,6 +3,14 @@ import tensorflow as tf
 from tensorflow.python.layers.core import Dense
 from tensorflow.python.ops.rnn_cell_impl import _zero_state_tensors
 
+def process_target_data(target_data, start_token, batch_size):
+    '''Remove the last word id from each batch and concat the <GO> to the begining of each batch'''
+
+    ending = target_data[:, :-1]
+    dec_input = tf.concat([tf.fill([batch_size, 1], start_token), ending], 1)
+
+    return dec_input
+
 def encoding_layer(rnn_size, sequence_length, num_layers, rnn_inputs, keep_prob):
     '''Create the encoding layer'''
 
@@ -30,7 +38,7 @@ def encoding_layer(rnn_size, sequence_length, num_layers, rnn_inputs, keep_prob)
     return enc_output, enc_state
 
 def training_decoding_layer(target_data, output_length, output_layer, vocab_size,
-        rnn_size, enc_output, text_length, dec_cell, batch_size):
+        rnn_size, enc_output, text_length, dec_cell, batch_size, start_token):
     '''Create the training logits'''
 
     attn_mech = tf.contrib.seq2seq.BahdanauAttention(rnn_size,
@@ -38,6 +46,8 @@ def training_decoding_layer(target_data, output_length, output_layer, vocab_size
                                                   text_length,
                                                   normalize=False,
                                                   name='BahdanauAttention')
+
+    target_data = process_target_data(target_data, start_token, batch_size)
 
     dec_cell = tf.contrib.seq2seq.AttentionWrapper(dec_cell, attn_mech, rnn_size)
 
@@ -115,7 +125,8 @@ def decoding_layer(target_data, enc_output, enc_state, vocab_size, text_length, 
                                                   enc_output,
                                                   text_length,
                                                   dec_cell,
-                                                  batch_size)
+                                                  batch_size,
+                                                  vocab_to_int['<GO>'])
     with tf.variable_scope("decode", reuse=True):
         inference_logits = inference_decoding_layer(len(vocab_to_int),
                                                     vocab_to_int['<GO>'],
