@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[ ]:
+# In[1]:
 
 import os
 import tensorflow as tf
@@ -14,7 +14,7 @@ import scipy.io.wavfile
 import time
 
 
-# In[ ]:
+# In[2]:
 
 root = 'gs://wsj-data/wsj0/'
 keep_prob = 0.95
@@ -25,15 +25,16 @@ num_layers = 3
 batch_size = 24
 learning_rate = 0.001
 num_epochs = 5
+beam_width = 20
 
 learning_rate_decay = 0.99985
 min_learning_rate = 0.0005
-display_step = 20 # Check training loss after every display_step batches
+display_step = 1 # Check training loss after every display_step batches
 
 checkpoint = "gs://wsj-data/checkpoint37"
 
 
-# In[ ]:
+# In[3]:
 
 vocab = np.asarray(list(" '+-.ABCDEFGHIJKLMNOPQRSTUVWXYZ_") + ['<GO>', '<EOS>'])
 vocab_to_int = {}
@@ -42,7 +43,7 @@ for ch in vocab:
     vocab_to_int[ch] = len(vocab_to_int)
 
 
-# In[ ]:
+# In[4]:
 
 # A custom class inheriting tf.gfile.Open for providing seek with whence
 class FileOpen(tf.gfile.Open):
@@ -55,7 +56,7 @@ class FileOpen(tf.gfile.Open):
             raise FileError
 
 
-# In[ ]:
+# In[5]:
 
 # https://github.com/zszyellow/WER-in-python/blob/master/wer.py
 def wer(r, h):
@@ -81,7 +82,7 @@ def wer(r, h):
     return float(d[len(r)][len(h)]) / max(len(r), len(h)) * 100
 
 
-# In[ ]:
+# In[6]:
 
 out_file = tf.gfile.Open(root + 'transcripts/wsj0/wsj0.trans')
 numcep = 13
@@ -116,7 +117,7 @@ def get_next_batch():
     return (input_batch, output_batch, input_batch_length, output_batch_length)
 
 
-# In[ ]:
+# In[7]:
 
 # Make a graph and it's session
 train_graph = tf.Graph()
@@ -141,11 +142,12 @@ with train_graph.as_default():
                                                       rnn_size=rnn_size,
                                                       num_layers=num_layers,
                                                       vocab_to_int=vocab_to_int,
-                                                      batch_size=batch_size)
+                                                      batch_size=batch_size,
+                                                      beam_width=beam_width)
 
     # Create tensors for the training logits and inference logits
     training_logits = tf.identity(training_logits.rnn_output, 'logits')
-    inference_logits = tf.identity(inference_logits.sample_id, name='predictions')
+    inference_logits = tf.identity(inference_logits.predicted_ids, name='predictions')
 
     # Create the weights for sequence_loss
     masks = tf.sequence_mask(output_lengths, tf.reduce_max(output_lengths), dtype=tf.float32, name='masks')
@@ -193,21 +195,37 @@ with train_graph.as_default():
                     tf.logging.info("Epoch {} (likely) completed".format(epoch_i))
                     break
 
-                logits = sess.run(
-                    inference_logits,
-                    {model_input: input_batch,
-                     input_lengths: input_lengths_batch})
-                tot_wer = 0.0
-                tot_cer = 0.0
-                for i in range(batch_size):
-                    real_out = ''.join([vocab[l] for l in output_batch[i, :output_lengths_batch[i] - 1]])
-                    pred_out = ''.join([vocab[l] for l in logits[i]])
-                    #pred_out = pred_out.split('<')[0]
-                    tot_wer += wer(real_out.split(), pred_out.split())
-                    tot_cer += wer(list(real_out), list(pred_out))
-                tf.logging.info('Sample real output: {}'.format(real_out))
-                tf.logging.info('Sample predicted output: {}'.format(pred_out))
-                tf.logging.info('WER: {}, CER: {}'.format(tot_wer / batch_size, tot_cer / batch_size))
+                start_time = time.time()
+
+
+                batch_loss += loss
+                end_time = time.time()
+                batch_time = end_time - start_time
+
+                if batch_i % display_step == 1:
+                    batch_loss = 0
+
+                    logits = sess.run(
+                        inference_logits,
+                        {model_input: input_batch,
+                         input_lengths: input_lengths_batch,
+                         beam_width: beam_width_value})
+                    logits = logits[:, :, 0]
+                    tot_wer = 0.0
+                    tot_cer = 0.0
+                    for i in range(batch_size):
+                        real_out = ''.join([vocab[l] for l in output_batch[i, :output_lengths_batch[i] - 1]])
+                        pred_out = ''.join([vocab[l] for l in logits[i]])
+                        #pred_out = pred_out.split('<')[0]
+                        tot_wer += wer(real_out.split(), pred_out.split())
+                        tot_cer += wer(list(real_out), list(pred_out))
+                    tf.logging.info('Sample real output: {}'.format(real_out))
+                    tf.logging.info('Sample predicted output: {}'.format(pred_out))
+                    tf.logging.info('WER: {}, CER: {}'.format(tot_wer / batch_size, tot_cer / batch_size))
+                    summary = tf.Summary(value=
+                        [tf.Summary.Value(tag="WER", simple_value=tot_wer / batch_size),
+                         tf.Summary.Value(tag="CER", simple_value=tot_cer / batch_size),
+                        ])
 
             # Reduce learning rate, but not below its minimum value
             learning_rate *= learning_rate_decay

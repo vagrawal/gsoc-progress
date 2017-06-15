@@ -29,7 +29,7 @@ def encoding_layer(rnn_size, sequence_length, num_layers, rnn_inputs, keep_prob)
 
     return enc_output, enc_state
 
-def training_decoding_layer(dec_input, output_length, output_layer, vocab_size,
+def training_decoding_layer(target_data, output_length, output_layer, vocab_size,
         rnn_size, enc_output, text_length, dec_cell, batch_size):
     '''Create the training logits'''
 
@@ -43,9 +43,9 @@ def training_decoding_layer(dec_input, output_length, output_layer, vocab_size,
 
     initial_state = dec_cell.zero_state(dtype=tf.float32, batch_size=batch_size)
 
-    dec_input = tf.nn.embedding_lookup(tf.eye(vocab_size), dec_input)
+    target_data = tf.nn.embedding_lookup(tf.eye(vocab_size), target_data)
 
-    training_helper = tf.contrib.seq2seq.TrainingHelper(inputs=dec_input,
+    training_helper = tf.contrib.seq2seq.TrainingHelper(inputs=target_data,
                                                         sequence_length=output_length,
                                                         time_major=False)
 
@@ -55,7 +55,8 @@ def training_decoding_layer(dec_input, output_length, output_layer, vocab_size,
                                                        output_layer)
 
     training_logits, _, _ = tf.contrib.seq2seq.dynamic_decode(training_decoder,
-                                                           output_time_major=False)
+                                                              output_time_major=False,
+                                                              impute_finished = True)
     return training_logits
 
 def inference_decoding_layer(vocab_size, start_token, end_token, output_layer,
@@ -91,7 +92,7 @@ def inference_decoding_layer(vocab_size, start_token, end_token, output_layer,
 
     return inference_logits
 
-def decoding_layer(dec_input, enc_output, enc_state, vocab_size, text_length, output_length,
+def decoding_layer(target_data, enc_output, enc_state, vocab_size, text_length, output_length,
                    max_output_length, rnn_size, vocab_to_int, keep_prob,
                    batch_size, num_layers, beam_width):
     '''Create the decoding cell and attention for the training and inference decoding layers'''
@@ -106,7 +107,7 @@ def decoding_layer(dec_input, enc_output, enc_state, vocab_size, text_length, ou
                          kernel_initializer = tf.truncated_normal_initializer(mean = 0.0, stddev=0.1))
 
     with tf.variable_scope("decode"):
-        training_logits = training_decoding_layer(dec_input,
+        training_logits = training_decoding_layer(target_data,
                                                   output_length,
                                                   output_layer,
                                                   vocab_size,

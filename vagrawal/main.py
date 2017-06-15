@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[ ]:
 
 import os
 import tensorflow as tf
@@ -12,12 +12,13 @@ from python_speech_features.base import mfcc
 from seq2seq_model import seq2seq_model
 import scipy.io.wavfile
 import time
+import sys
 
 
-# In[2]:
+# In[ ]:
 
 root = 'gs://wsj-data/wsj0/'
-keep_prob = 0.95
+keep_prob = 1.0
 max_input_len = 1000
 max_output_len = 150
 rnn_size = 256
@@ -25,16 +26,16 @@ num_layers = 3
 batch_size = 24
 learning_rate = 0.001
 num_epochs = 5
-beam_width = 20
+beam_width = 10
 
 learning_rate_decay = 0.99985
 min_learning_rate = 0.0005
-display_step = 20 # Check training loss after every display_step batches
+display_step = 50 # Check training loss after every display_step batches
 
-checkpoint = "gs://wsj-data/checkpoint37" 
+checkpoint = "gs://wsj-data/checkpoint51" 
 
 
-# In[3]:
+# In[ ]:
 
 vocab = np.asarray(list(" '+-.ABCDEFGHIJKLMNOPQRSTUVWXYZ_") + ['<GO>', '<EOS>'])
 vocab_to_int = {}
@@ -43,7 +44,7 @@ for ch in vocab:
     vocab_to_int[ch] = len(vocab_to_int)
 
 
-# In[4]:
+# In[ ]:
 
 # A custom class inheriting tf.gfile.Open for providing seek with whence
 class FileOpen(tf.gfile.Open):
@@ -56,7 +57,7 @@ class FileOpen(tf.gfile.Open):
             raise FileError
 
 
-# In[5]:
+# In[ ]:
 
 # https://github.com/zszyellow/WER-in-python/blob/master/wer.py
 def wer(r, h):
@@ -82,7 +83,7 @@ def wer(r, h):
     return float(d[len(r)][len(h)]) / max(len(r), len(h)) * 100
 
 
-# In[6]:
+# In[ ]:
 
 out_file = tf.gfile.Open(root + 'transcripts/wsj0/wsj0.trans')
 numcep = 13
@@ -106,18 +107,21 @@ def get_next_batch():
     output_batch = [] # Variable shape of maximum length string 
     input_batch_length = np.zeros((batch_size), 'int')
     output_batch_length = np.zeros((batch_size), 'int')
-    for i in range(batch_size):
+    while len(output_batch) < batch_size:
         inp, out = get_next_input()
+        pos = len(output_batch)
+        if (len(out) > 50):
+            continue
         inp = inp[:max_input_len]
-        input_batch[i, :inp.shape[0]] = inp
+        input_batch[pos, :inp.shape[0]] = inp
         output_batch.append(out)
-        input_batch_length[i] = inp.shape[0]
-        output_batch_length[i] = len(out) + 2
+        input_batch_length[pos] = inp.shape[0]
+        output_batch_length[pos] = len(out) + 2
     output_batch = np.asarray(pad_sentence_batch(output_batch))
     return (input_batch, output_batch, input_batch_length, output_batch_length)
 
 
-# In[7]:
+# In[ ]:
 
 # Make a graph and it's session
 train_graph = tf.Graph()
@@ -176,8 +180,8 @@ with train_graph.as_default():
 
 with train_graph.as_default():
     with tf.train.MonitoredTrainingSession(checkpoint_dir=checkpoint,
-              save_checkpoint_secs=600,
-              save_summaries_steps=20) as sess:
+              save_checkpoint_secs=2800,
+              save_summaries_steps=50) as sess:
 
         # If we want to continue training a previous session
         #loader = tf.train.import_meta_graph("./" + checkpoint + '.meta')
@@ -191,7 +195,7 @@ with train_graph.as_default():
                 try:
                     input_batch, output_batch, input_lengths_batch, output_lengths_batch = get_next_batch()
                 except:
-                    #tf.logging.info("Error: {}".format(sys.exc_info()[0]))
+                    tf.logging.info("Error: {}".format(sys.exc_info()[0]))
                     tf.logging.info("Epoch {} (likely) completed".format(epoch_i))
                     break
 
@@ -203,8 +207,7 @@ with train_graph.as_default():
                      model_output: output_batch,
                      learning_rate_tensor: learning_rate,
                      output_lengths: output_lengths_batch,
-                     input_lengths: input_lengths_batch,
-                     beam_width: 1})
+                     input_lengths: input_lengths_batch})
 
                 batch_loss += loss
                 end_time = time.time()
@@ -222,8 +225,8 @@ with train_graph.as_default():
                     logits = sess.run(
                         inference_logits,
                         {model_input: input_batch,
-                         input_lengths: input_lengths_batch,
-                         beam_width: beam_width_value})
+                         input_lengths: input_lengths_batch})
+                    logits = logits[:, :, 0]
                     tot_wer = 0.0
                     tot_cer = 0.0
                     for i in range(batch_size):
@@ -246,14 +249,4 @@ with train_graph.as_default():
             learning_rate *= learning_rate_decay
             if learning_rate < min_learning_rate:
                 learning_rate = min_learning_rate
-
-
-# In[ ]:
-
-get_next_batch()
-
-
-# In[ ]:
-
-
 
