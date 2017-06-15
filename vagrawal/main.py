@@ -19,20 +19,20 @@ import sys
 
 root = 'gs://wsj-data/wsj0/'
 keep_prob = 1.0
-max_input_len = 1000
-max_output_len = 150
+max_input_len = 500
+max_output_len = 50
 rnn_size = 256
 num_layers = 3
-batch_size = 24
+batch_size = 32
 learning_rate = 0.001
 num_epochs = 5
 beam_width = 10
 
 learning_rate_decay = 0.99985
 min_learning_rate = 0.0005
-display_step = 50 # Check training loss after every display_step batches
+display_step = 20 # Check training loss after every display_step batches
 
-checkpoint = "gs://wsj-data/checkpoint51" 
+checkpoint = "gs://wsj-data/checkpoint53" 
 
 
 # In[ ]:
@@ -89,12 +89,16 @@ out_file = tf.gfile.Open(root + 'transcripts/wsj0/wsj0.trans')
 numcep = 13
 
 def get_next_input():
-    trans = out_file.readline()
-    cont, file = trans.split('(')
-    file = file[:-2]
-    sample_rate, signal = scipy.io.wavfile.read(FileOpen(root + 'wav/' + file.rstrip('\n'), 'rb'))
-    Y = [vocab_to_int[c] for c in list(cont)]
-    X = mfcc(signal, sample_rate, numcep=numcep)
+    X = None
+    while (X is None or X.shape[0] > max_input_len):
+        Y = None
+        while (Y is None or len(Y) > max_output_len):
+            trans = out_file.readline()
+            cont, file = trans.split('(')
+            file = file[:-2]
+            Y = [vocab_to_int[c] for c in list(cont)]
+        sample_rate, signal = scipy.io.wavfile.read(FileOpen(root + 'wav/' + file.rstrip('\n'), 'rb'))
+        X = mfcc(signal, sample_rate, numcep=numcep)
     return X, Y
 
 def pad_sentence_batch(sentence_batch):
@@ -110,8 +114,6 @@ def get_next_batch():
     while len(output_batch) < batch_size:
         inp, out = get_next_input()
         pos = len(output_batch)
-        if (len(out) > 50):
-            continue
         inp = inp[:max_input_len]
         input_batch[pos, :inp.shape[0]] = inp
         output_batch.append(out)
@@ -181,7 +183,7 @@ with train_graph.as_default():
 with train_graph.as_default():
     with tf.train.MonitoredTrainingSession(checkpoint_dir=checkpoint,
               save_checkpoint_secs=2800,
-              save_summaries_steps=50) as sess:
+              save_summaries_steps=5) as sess:
 
         # If we want to continue training a previous session
         #loader = tf.train.import_meta_graph("./" + checkpoint + '.meta')
@@ -230,9 +232,9 @@ with train_graph.as_default():
                     tot_wer = 0.0
                     tot_cer = 0.0
                     for i in range(batch_size):
-                        real_out = ''.join([vocab[l] for l in output_batch[i, :output_lengths_batch[i] - 1]])
-                        pred_out = ''.join([vocab[l] for l in logits[i]])
-                        #pred_out = pred_out.split('<')[0]
+                        real_out = ''.join([vocab[l] for l in output_batch[i, 1:output_lengths_batch[i] - 1]])
+                        pred_out = ''.join([vocab[l] for l in logits[i, 1:]])
+                        pred_out = pred_out.split('<')[0]
                         tot_wer += wer(real_out.split(), pred_out.split())
                         tot_cer += wer(list(real_out), list(pred_out))
                     tf.logging.info('Sample real output: {}'.format(real_out))
