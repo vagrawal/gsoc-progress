@@ -38,4 +38,11 @@ Finally found the mistake after debugging for so long. I was using targets align
 
 # 16 June
 
+I ran the code with all the data as training with maximum length 50 at start
+before running till 150. The sharp peak is where I changed the dataset. It can
+completely learn(by overfitting) the smaller dataset. At least the model seems
+to be working.
+
+![Iter2](images/iter-2.png)
+
 Try to modularize codebase and make script based interface. Still not working.
