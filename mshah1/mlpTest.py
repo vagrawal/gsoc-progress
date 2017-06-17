@@ -1,3 +1,5 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 from keras.models import Sequential
 from keras.optimizers import SGD
 from keras.layers import Input, Dense, Activation, Dropout, add, Conv1D, MaxPooling1D, Reshape, Flatten
@@ -10,15 +12,17 @@ from tfrbm import GBRBM,BBRBM
 from sys import stdout
 import time
 import gc
+from sklearn.preprocessing import StandardScaler
+from guppy import hpy
 # import matplotlib as mpl
 # print mpl.matplotlib_fname()
 # mpl.rcParams['backend'] = 'agg'
 # plt = mpl.pyplot
 def mlp1(input_dim,output_dim,depth,width):
 	model = Sequential()
-	model.add(Dense(width, activation='relu', input_dim=input_dim))
+	model.add(Dense(width, activation='sigmoid', input_dim=input_dim))
 	for i in range(depth):
-		model.add(Dense(width, activation='relu'))
+		model.add(Dense(width, activation='sigmoid'))
 	model.add(Dense(output_dim, activation='softmax'))
 	model.compile(optimizer='adagrad',
 	              loss='categorical_crossentropy',
@@ -80,7 +84,7 @@ def mlp4(input_dim,output_dim,nBlocks,width):
 	              metrics=['accuracy'])
 	return model
 
-def preTrain(model,skip_layers,weights=None):
+def preTrain(model,x_train,y_train,skip_layers=[],weights=None):
 	print model.summary()
 	layers = model.layers
 	output = layers[-1]
@@ -105,37 +109,50 @@ def preTrain(model,skip_layers,weights=None):
 		model.layers[i].set_weights(model_new.layers[-2].get_weights())
 	return model
 
-def trainDBN_DNN(x_train,y_train,depth,width):
-	input_dim = x_train.shape[1]
-	inp = x_train
+@profile
+def trainDBN_DNN(data_file,depth,width):
+	print 'loading data...'
+	inp = np.load(data_file)['X_Train']
+	# print 'normalizing the data...'
+	# scaler = StandardScaler(copy=False,with_std=False)
+	# inp = scaler.fit_transform(inp)
+
+	input_dim = inp.shape[1]
 	weights = []
 	bias = []
 	batch_size = 500000
 	n_batches = (x_train.shape[0] / batch_size) + (1 if x_train.shape[0]%batch_size != 0 else 0)
-	temp_arr = np.zeros((batch_size * n_batches, width))
 	for i in range(depth):
 		print 'training DBN layer', i
 		if i == 0:
 			rbm = GBRBM(n_visible=input_dim,n_hidden=width,learning_rate=0.01, momentum=0.95, use_tqdm=True)
+			rbm.fit(inp,n_epoches=30,batch_size=20000,shuffle=False)
 		else:
 			rbm = BBRBM(n_visible=input_dim,n_hidden=width,learning_rate=0.01, momentum=0.95, use_tqdm=True)
-		rbm.fit(inp,n_epoches=10,batch_size=20000,shuffle=False)
+			rbm.fit(inp,n_epoches=5,batch_size=20000,shuffle=False)
 		(W,_,Bh) = rbm.get_weights()
 		weights.append(W)
 		bias.append(Bh)
+
 		print 'batch transforming data...'
 		for j in range(n_batches):
 			stdout.write("\r%d batch no %d/%d" % (int(time.time()),j+1,n_batches))
 			stdout.flush()
 			b = np.array(inp[j*batch_size:min((j+1)*batch_size, inp.shape[0])])
 			T = rbm.transform(b)
-			temp_arr[j*batch_size:min((j+1)*batch_size, inp.shape[0])] = T
-		inp = temp_arr
+			inp[j*batch_size:min((j+1)*batch_size, inp.shape[0])] = T
 		stdout.write("\n")
 		stdout.flush()
 		print 'batch transform finished...'
+		inp = rbm.transform(inp)
 		input_dim = inp.shape[1]
 
+	print 'loading data...'
+	data = np.load('wsj0_phonelabels_bracketed.npz')
+	x_train = data['X_Train']
+	y_train = data['Y_Train']
+	print 'transforming labels...'
+	y_train = to_categorical(y_train, num_classes = nClasses)
 	model = mlp1(x_train.shape[1],y_train.shape[1],depth-1,width)
 	print len(weights), len(model.layers)
 	assert len(weights) == len(model.layers) - 1
@@ -155,44 +172,54 @@ def mlp5(input_dim,output_dim):
 # model = mlp4(20, 132,2,2048)
 # print model.summary()
 # plot_model(model, to_file='mlp4_model.png')
-print 'loading data...'
-data = np.load('wsj0_phonelabels_bracketed.npz')
-x_train = data['X_Train']
-y_train = data['Y_Train']
+model = trainDBN_DNN('wsj0_phonelabels_bracketed.npz',4,512)
 
-print 'transforming labels...'
-nClasses = int(np.max(y_train) + 1)
-y_train = to_categorical(y_train, num_classes = nClasses)
+# print 'loading data...'
+# data = np.load('wsj0_phonelabels_bracketed.npz')
+# x_train = data['X_Train']
+# y_train = data['Y_Train']
 
-print 'initializing model...'
-# model = mlp1(x_train.shape[1], nClasses)
-model = trainDBN_DNN(x_train,y_train,4,512)
-print model.summary()
+# print 'normalizing the data...'
+# scaler = StandardScaler(copy=False)
+# scaler.fit(x_train)
+# x_train = scaler.transform(x_train)
+
+# nClasses = int(np.max(y_train) + 1)
+
+# print 'initializing model...'
+# # model1 = mlp1(x_train.shape[1], nClasses,0,4096)
+# # model2 = mlp1(x_train.shape[1], nClasses,4,2048)
+# model = mlp1(x_train.shape[1], nClasses,2,2048)
+# print model.summary()
+
+# print 'transforming labels...'
+# y_train = to_categorical(y_train, num_classes = nClasses)
 # print 'pretraining model...'
-# model = preTrain(model,x_train[:3000000],y_train[:3000000],range(4))
-# weights = map(lambda x: x.get_weights(), model.layers)
-print 'starting fit...'
-history = model.fit(x_train,y_train,epochs=10,batch_size=20000)
+# model = preTrain(model,x_train[:3000000],y_train[:3000000])
+# print 'starting fit...'
+# history = model.fit(x_train,y_train,epochs=10,batch_size=20000)
 
-print 'saving model...'
-model.save('dbn-dnn_phonelabels.h5')
-print(history.history.keys())
+# print 'saving model...'
+# model.save('mlp4_phonelabels.h5')
+# print(history.history.keys())
 
-print 'plotting graphs...'
-# summarize history for accuracy
-plt.plot(history.history['acc'])
-plt.title('model accuracy')
-plt.ylabel('accuracy')
-plt.xlabel('epoch')
-plt.savefig('dbn-dnn_relu_adagrad.png')
+# print 'plotting graphs...'
+# # summarize history for accuracy
+# plt.plot(history.history['acc'])
+# plt.title('model accuracy')
+# plt.ylabel('accuracy')
+# plt.xlabel('epoch')
+# plt.savefig('mlp4_relu_adagrad.png')
 
 
-# model = load_model("mlp1_phonelabels.h5")
-print 'loading test data...'
-x_test = data['X_Test']
-y_test = data['Y_Test']
-print 'transforming labels...'
-y_test = to_categorical(y_test, num_classes = nClasses)
-print 'scoring...'
-score = model.evaluate(x_test, y_test, batch_size=2000)
-print score
+# # model = load_model("mlp1_phonelabels.h5")
+# print 'loading test data...'
+# x_test = data['X_Test']
+# y_test = data['Y_Test']
+# print 'normalizing the data...'
+# x_test = scaler.transform(x_test)
+# print 'transforming labels...'
+# y_test = to_categorical(y_test, num_classes = nClasses)
+# print 'scoring...'
+# score = model.evaluate(x_test, y_test, batch_size=2000)
+# print score
