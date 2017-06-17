@@ -35,3 +35,7 @@ I added beam search decoder instead of the greedy decoder which was present. Bea
 # 15 June
 
 Finally found the mistake after debugging for so long. I was using targets aligned directly to the logits, and so tensorflow just predicts the same character. The right way to do is to shift targets one place right. I expect to get results with good error rates now.
+
+# 16 June
+
+Try to modularize codebase and make script based interface. Still not working.

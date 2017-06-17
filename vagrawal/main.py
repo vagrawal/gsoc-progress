@@ -19,20 +19,20 @@ import sys
 
 root = 'gs://wsj-data/wsj0/'
 keep_prob = 1.0
-max_input_len = 500
-max_output_len = 50
+max_input_len = 1500
+max_output_len = 150
 rnn_size = 256
 num_layers = 3
-batch_size = 32
+batch_size = 16
 learning_rate = 0.001
-num_epochs = 5
+num_epochs = 20
 beam_width = 10
 
 learning_rate_decay = 0.99985
 min_learning_rate = 0.0005
 display_step = 20 # Check training loss after every display_step batches
 
-checkpoint = "gs://wsj-data/checkpoint59" 
+checkpoint = "gs://wsj-data/checkpoint60" 
 
 
 # In[ ]:
@@ -138,7 +138,7 @@ with train_graph.as_default():
     learning_rate_tensor = tf.placeholder(tf.float32, name='learning_rate')
     
     # Create the training and inference logits
-    training_logits, inference_logits = seq2seq_model(input_data=model_input,
+    training_logits, predictions = seq2seq_model(input_data=model_input,
                                                       target_data=model_output,
                                                       keep_prob=keep_prob,
                                                       input_lengths=input_lengths,
@@ -151,9 +151,9 @@ with train_graph.as_default():
                                                       batch_size=batch_size,
                                                       beam_width=beam_width)
     
-    # Create tensors for the training logits and inference logits
+    # Create tensors for the training logits and predictions
     training_logits = tf.identity(training_logits.rnn_output, 'logits')
-    inference_logits = tf.identity(inference_logits.predicted_ids, name='predictions')
+    predictions = tf.identity(predictions.predicted_ids, name='predictions')
     
     # Create the weights for sequence_loss
     masks = tf.sequence_mask(output_lengths, tf.reduce_max(output_lengths), dtype=tf.float32, name='masks')
@@ -182,7 +182,7 @@ with train_graph.as_default():
 
 with train_graph.as_default():
     with tf.train.MonitoredTrainingSession(checkpoint_dir=checkpoint,
-              save_checkpoint_secs=2800,
+              save_checkpoint_secs=1800,
               save_summaries_steps=5) as sess:
 
         # If we want to continue training a previous session
@@ -224,16 +224,16 @@ with train_graph.as_default():
                                   batch_time*display_step))
                     batch_loss = 0     
 
-                    logits = sess.run(
-                        inference_logits,
+                    pred = sess.run(
+                        predictions,
                         {model_input: input_batch,
                          input_lengths: input_lengths_batch})
-                    logits = logits[:, :, 0]
+                    pred = pred[:, :, 0]
                     tot_wer = 0.0
                     tot_cer = 0.0
                     for i in range(batch_size):
-                        real_out = ''.join([vocab[l] for l in output_batch[i, 1:output_lengths_batch[i] - 1]])
-                        pred_out = ''.join([vocab[l] for l in logits[i, 1:]])
+                        real_out = ''.join([vocab[l] for l in output_batch[i, :output_lengths_batch[i] - 1]])
+                        pred_out = ''.join([vocab[l] for l in pred[i, :]])
                         pred_out = pred_out.split('<')[0]
                         tot_wer += wer(real_out.split(), pred_out.split())
                         tot_cer += wer(list(real_out), list(pred_out))
