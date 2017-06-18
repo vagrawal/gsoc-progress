@@ -1,10 +1,7 @@
-import os
 import numpy as np
-from scipy.fftpack import dct
 from python_speech_features.base import mfcc
 import scipy.io.wavfile
-
-root = 'gs://wsj-data/wsj0/'
+import tensorflow as tf
 
 # A custom class inheriting tf.gfile.Open for providing seek with whence
 class FileOpen(tf.gfile.Open):
@@ -16,33 +13,41 @@ class FileOpen(tf.gfile.Open):
         else:
             raise FileError
 
-out_file = tf.gfile.Open(root + 'transcripts/wsj0/wsj0.trans')
+def get_features(file, numcep):
+    sample_rate, signal = scipy.io.wavfile.read(FileOpen(file))
+    features = mfcc(signal, sample_rate, numcep=numcep)
+    return (features, features.shape[0])
 
-def get_next_input():
-    trans = out_file.readline()
-    cont, file = trans.split('(')
-    file = file[:-2]
-    sample_rate, signal = scipy.io.wavfile.read(FileOpen(root + 'wav/' + file.rstrip('\n'), 'rb'))
-    Y = [vocab_to_int[c] for c in list(cont)]
-    X = mfcc(signal, sample_rate, numcep=numcep)
-    return X, Y
+def read_data(root, numcep, batch_size, vocab_to_int, num_epochs):
+    trans = tf.gfile.Open(root + 'transcripts/wsj0/wsj0.trans').readlines()
+    train_texts = []
+    train_files = []
+    valid_texts = []
+    valid_files = []
+    for line in trans:
+        text, file = line.split('(')
+        text = text[:-1]
+        text = [vocab_to_int[c] for c in list(text)] + vocab_to_int['<EOS>']
+        file = file[:-2]
+        # Training set
+        if ('si_tr_s' == file.split('/')[2] and 'wv1' == file.split('.')[1]):
+            train_texts.append(text)
+            train_files.append(root + 'wav/' + file)
+        # Validation set
+        if ('sd_et_20' == file.split('/')[2] and 'wv1' == file.split('.')[1]):
+            valid_texts.append(text)
+            valid_files.append(root + 'wav/' + file)
+    train_texts, train_files = tf.train.slice_input_producer([train_texts,
+        train_files], num_epochs=num_epochs)
+    train_featues = tf.py_func(lambda x: get_features(x, numcep), [train_files],
+            tf.float32, stateful=False)
+    train_texts, train_files = tf.train.batch([train_texts, train_files],
+            batch_size, shapes=[[None], [None, None]], dynamic_pad=True)
 
-def pad_sentence_batch(sentence_batch):
-    """Pad sentences with <EOS> so that each sentence of a batch has the same length"""
-    max_sentence = max([len(sentence) for sentence in sentence_batch]) + 1
-    return [sentence + [vocab_to_int['<EOS>']] * (max_sentence - len(sentence)) for sentence in sentence_batch]
-
-def get_next_batch():
-    input_batch = np.zeros((batch_size, max_input_len, numcep), 'float32')
-    output_batch = [] # Variable shape of maximum length string 
-    input_batch_length = np.zeros((batch_size), 'int')
-    output_batch_length = np.zeros((batch_size), 'int')
-    for i in range(batch_size):
-        inp, out = get_next_input()
-        inp = inp[:max_input_len]
-        input_batch[i, :inp.shape[0]] = inp
-        output_batch.append(out)
-        input_batch_length[i] = inp.shape[0]
-        output_batch_length[i] = len(out) + 1
-    output_batch = np.asarray(pad_sentence_batch(output_batch))
-    return (input_batch, output_batch, input_batch_length, output_batch_length)
+    valid_texts, valid_files = tf.train.slice_input_producer([valid_texts,
+        valid_files], num_epochs=num_epochs)
+    valid_featues = tf.py_func(lambda x: get_features(x, numcep), [valid_files],
+            tf.float32, stateful=False)
+    valid_texts, valid_files = tf.train.batch([valid_texts, valid_files],
+            batch_size, shapes=[[None], [None, None]], dynamic_pad=True)
+    return train_texts, train_featues, valid_texts, valid_files
