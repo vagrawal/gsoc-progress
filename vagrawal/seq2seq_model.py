@@ -4,12 +4,10 @@ from tensorflow.python.ops.rnn_cell_impl import _zero_state_tensors
 
 def encoding_layer(
         rnn_size,
-        sequence_length,
+        input_lengths,
         num_layers,
         rnn_inputs,
         keep_prob):
-    '''Create the encoding layer'''
-
     for layer in range(num_layers):
         with tf.variable_scope('encoder_{}'.format(layer)):
             cell_fw = tf.contrib.rnn.LSTMCell(
@@ -32,21 +30,27 @@ def encoding_layer(
                     cell_fw,
                     cell_bw,
                     rnn_inputs,
-                    sequence_length,
+                    input_lengths,
                     dtype=tf.float32)
 
-            rnn_inputs = tf.nn.pool(
-                    tf.concat(enc_output,2),
-                    window_shape=[2],
-                    pooling_type='AVG',
-                    padding='SAME')
+            if layer != num_layers - 1:
+                rnn_inputs = tf.concat(enc_output,2)
+                # Keep only every second element in the sequence
+                rnn_inputs = tf.strided_slice(
+                        rnn_inputs,
+                        [0, 0, 0],
+                        tf.shape(rnn_inputs),
+                        [1, 2, 1],
+                        begin_mask=7,
+                        end_mask=7)
+                input_lengths = (input_lengths + 1) / 2
     # Join outputs since we are using a bidirectional RNN
     enc_output = tf.concat(enc_output,2)
 
-    return enc_output, enc_state
+    return enc_output, enc_state, input_lengths
 
 def training_decoding_layer(
-        target_data,
+        output_data,
         output_lengths,
         output_layer,
         vocab_size,
@@ -56,8 +60,6 @@ def training_decoding_layer(
         dec_cell,
         batch_size,
         start_token):
-    '''Create the training logits'''
-
     attn_mech = tf.contrib.seq2seq.BahdanauAttention(
             rnn_size,
             enc_output,
@@ -65,10 +67,8 @@ def training_decoding_layer(
             normalize=False,
             name='BahdanauAttention')
 
-    target_data = process_target_data(
-            target_data,
-            start_token,
-            batch_size)
+    output_data = tf.concat(
+            [tf.fill([batch_size, 1], start_token), output_data[:, :-1]], 1)
 
     dec_cell = tf.contrib.seq2seq.AttentionWrapper(
             dec_cell,
@@ -79,12 +79,12 @@ def training_decoding_layer(
             dtype=tf.float32,
             batch_size=batch_size)
 
-    target_data = tf.nn.embedding_lookup(
+    output_data = tf.nn.embedding_lookup(
             tf.eye(vocab_size),
-            target_data)
+            output_data)
 
     training_helper = tf.contrib.seq2seq.TrainingHelper(
-            inputs=target_data,
+            inputs=output_data,
             sequence_length=output_lengths,
             time_major=False)
 
@@ -113,7 +113,6 @@ def inference_decoding_layer(
         enc_output,
         input_lengths,
         dec_cell):
-    '''Create the inference logits'''
     enc_output = tf.contrib.seq2seq.tile_batch(
             enc_output,
             beam_width)
@@ -161,7 +160,7 @@ def inference_decoding_layer(
 
 def seq2seq_model(
         input_data,
-        target_data,
+        output_data,
         keep_prob,
         input_lengths,
         output_lengths,
@@ -171,12 +170,10 @@ def seq2seq_model(
         num_layers,
         vocab_to_int,
         batch_size,
-        beam_width):
+        beam_width,
+        learning_rate):
 
-    dec_input = tf.concat(
-            [tf.fill([batch_size, 1], start_token), target_data[:, :-1]], 1)
-
-    enc_output, enc_state = encoding_layer(
+    enc_output, enc_state, enc_lengths = encoding_layer(
             rnn_size,
             input_lengths,
             num_layers,
@@ -199,13 +196,13 @@ def seq2seq_model(
 
     with tf.variable_scope("decode"):
         training_logits = training_decoding_layer(
-                target_data,
+                output_data,
                 output_lengths,
                 output_layer,
                 vocab_size,
                 rnn_size,
                 enc_output,
-                input_lengths,
+                enc_lengths,
                 dec_cell,
                 batch_size,
                 vocab_to_int['<GO>'])
@@ -220,7 +217,7 @@ def seq2seq_model(
                 beam_width,
                 rnn_size,
                 enc_output,
-                input_lengths,
+                enc_lengths,
                 dec_cell)
 
     # Create tensors for the training logits and predictions
@@ -228,7 +225,7 @@ def seq2seq_model(
             training_logits.rnn_output,
             name='logits')
     predictions = tf.identity(
-            predictions.predicted_ids,
+            predictions.predicted_ids[:, :, 0],
             name='predictions')
 
     # Create the weights for sequence_loss
@@ -242,7 +239,7 @@ def seq2seq_model(
         # Loss function
         cost = tf.contrib.seq2seq.sequence_loss(
             training_logits,
-            model_output,
+            output_data,
             masks)
 
         tf.summary.scalar('cost', cost)
@@ -250,7 +247,7 @@ def seq2seq_model(
         step = tf.contrib.framework.get_or_create_global_step()
 
         # Optimizer
-        optimizer = tf.train.AdamOptimizer(learning_rate_tensor)
+        optimizer = tf.train.AdamOptimizer(learning_rate)
 
         # Gradient Clipping
         gradients = optimizer.compute_gradients(cost)
@@ -259,4 +256,5 @@ def seq2seq_model(
             for grad, var in gradients if grad is not None]
         train_op = optimizer.apply_gradients(capped_gradients, step)
 
-    return training_logits, predictions, train_op
+    return training_logits, predictions, train_op, cost, step
+
