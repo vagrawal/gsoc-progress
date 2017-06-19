@@ -1,10 +1,11 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 from keras.models import Sequential
 from keras.optimizers import SGD
 from keras.layers import Input, Dense, Activation, Dropout, add, Conv1D, MaxPooling1D, Reshape, Flatten
 from keras.utils import to_categorical, plot_model
 from keras.models import load_model, Model
+from keras.callbacks import History
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -14,6 +15,7 @@ import time
 import gc
 from sklearn.preprocessing import StandardScaler
 from guppy import hpy
+import threading
 # import matplotlib as mpl
 # print mpl.matplotlib_fname()
 # mpl.rcParams['backend'] = 'agg'
@@ -109,7 +111,7 @@ def preTrain(model,x_train,y_train,skip_layers=[],weights=None):
 		model.layers[i].set_weights(model_new.layers[-2].get_weights())
 	return model
 
-@profile
+
 def trainDBN_DNN(data_file,depth,width):
 	print 'loading data...'
 	inp = np.load(data_file)['X_Train']
@@ -169,57 +171,99 @@ def mlp5(input_dim,output_dim):
 	              loss='categorical_crossentropy',
 	              metrics=['accuracy'])
 	return model
-# model = mlp4(20, 132,2,2048)
-# print model.summary()
-# plot_model(model, to_file='mlp4_model.png')
-model = trainDBN_DNN('wsj0_phonelabels_bracketed.npz',4,512)
 
-# print 'loading data...'
-# data = np.load('wsj0_phonelabels_bracketed.npz')
-# x_train = data['X_Train']
-# y_train = data['Y_Train']
+def normalizeByUtterance(data,nFrames):
+	print 'normalizing...'
+	scaler = StandardScaler(copy=False)
+	# print data
+	pos = 0
+	for i in xrange(len(nFrames)):
+		sys.stdout.write("\rnormalizing utterance no %d " % i)
+		sys.stdout.flush()
+		data[pos:nFrames[i]] = scaler.fit_transform(data[pos:nFrames[i]])
+		pos = nFrames[i]
+	# print data
 
-# print 'normalizing the data...'
-# scaler = StandardScaler(copy=False)
-# scaler.fit(x_train)
-# x_train = scaler.transform(x_train)
+class TestCallback(History):
+    def __init__(self, test_data):
+        self.test_data = test_data
+    def on_train_begin(self,logs=None):
+    	super(TestCallback,self).on_train_begin(logs)
+    def on_epoch_end(self, epoch, logs={}):
+        x, y = self.test_data
+        loss, acc = self.model.evaluate(x, y, verbose=0)
+        logs['eval_loss'] = loss
+        logs['eval_acc'] = acc
+        super(TestCallback,self).on_epoch_end(epoch, logs)
+        print('\nTesting loss: {}, Testing acc: {}\n'.format(loss, acc))
 
-# nClasses = int(np.max(y_train) + 1)
+def trainNtest(model,x_train,y_train,x_test,y_test,modelName,plot_name):
 
-# print 'initializing model...'
-# # model1 = mlp1(x_train.shape[1], nClasses,0,4096)
-# # model2 = mlp1(x_train.shape[1], nClasses,4,2048)
-# model = mlp1(x_train.shape[1], nClasses,2,2048)
-# print model.summary()
+	# model = mlp4(20, 132,2,2048)
+	# print model.summary()
+	# plot_model(model, to_file='mlp4_model.png')
+	# model = trainDBN_DNN('wsj0_phonelabels_bracketed.npz',4,512)
 
-# print 'transforming labels...'
-# y_train = to_categorical(y_train, num_classes = nClasses)
-# print 'pretraining model...'
-# model = preTrain(model,x_train[:3000000],y_train[:3000000])
-# print 'starting fit...'
-# history = model.fit(x_train,y_train,epochs=10,batch_size=20000)
+	# print 'normalizing the data...'
+	# scaler = StandardScaler(copy=False)
+	# scaler.fit(x_train)
+	# x_train = scaler.transform(x_train)
+	print 'pretraining model...'
+	model = preTrain(model,x_train[:3000000],y_train[:3000000])
+	print 'starting fit...'
+	history = model.fit(x_train,y_train,epochs=10,batch_size=20000,
+						callbacks=[TestCallback((x_test,y_test))])
 
-# print 'saving model...'
-# model.save('mlp4_phonelabels.h5')
-# print(history.history.keys())
+	print 'saving model...'
+	model.save(modelName+'.h5')
+	print(history.history.keys())
 
-# print 'plotting graphs...'
-# # summarize history for accuracy
-# plt.plot(history.history['acc'])
-# plt.title('model accuracy')
-# plt.ylabel('accuracy')
-# plt.xlabel('epoch')
-# plt.savefig('mlp4_relu_adagrad.png')
+	print 'plotting graphs...'
+	# summarize history for accuracy
+	plt.plot(history.history['acc'])
+	plt.title('model accuracy')
+	plt.ylabel('training accuracy')
+	plt.xlabel('epoch')
+	plt.savefig(plot_name+'_train.png')
+	plt.clf()
+
+	plt.plot(history.history['eval_acc'])
+	plt.title('model accuracy')
+	plt.ylabel('evaluation accuracy')
+	plt.xlabel('epoch')
+	plt.savefig(plot_name+'_eval.png')
 
 
-# # model = load_model("mlp1_phonelabels.h5")
-# print 'loading test data...'
-# x_test = data['X_Test']
-# y_test = data['Y_Test']
-# print 'normalizing the data...'
-# x_test = scaler.transform(x_test)
-# print 'transforming labels...'
-# y_test = to_categorical(y_test, num_classes = nClasses)
-# print 'scoring...'
-# score = model.evaluate(x_test, y_test, batch_size=2000)
-# print score
+	# model = load_model("mlp1_phonelabels.h5")
+	# print 'normalizing the data...'
+	# x_test = scaler.transform(x_test)
+	print 'scoring...'
+	score = model.evaluate(x_test, y_test, batch_size=2000)
+	print score
+
+print 'loading data...'
+meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
+x_train = np.load('wsj0_phonelabels_bracketed_train.npy')
+y_train = meta['Y_Train']
+print 'transforming labels...'
+nClasses = int(np.max(y_train) + 1)
+y_train = to_categorical(y_train, num_classes = nClasses)
+# normalizeByUtterance(x_train,meta['framePos_Train'])
+print 'loading test data...'
+x_test = np.load('wsj0_phonelabels_bracketed_dev.npy')
+y_test = meta['Y_Dev']
+print 'transforming labels...'
+y_test = to_categorical(y_test, num_classes = nClasses)
+# normalizeByUtterance(x_test,meta['framePos_Dev'])
+
+
+
+print 'initializing model...'
+# model1 = mlp1(x_train.shape[1], nClasses,0,4096)
+# model2 = mlp1(x_train.shape[1], nClasses,4,2048)
+model = mlp1(x_train.shape[1], nClasses,2,2048)
+print model.summary()
+
+# t1 = threading.Thread(target=trainNtest,args=(model,x_train,y_train,x_test,y_test,'mlp1-3x2048-sig-adagrad','mlp1-3x2048-sig-adagrad'))
+# t2 = threading.Thread(target=trainNtest,args=(model,x_train,y_train,x_test,y_test,'mlp1-3x2048-sig-adagrad','mlp1-3x2048-sig-adagrad'))
+trainNtest(model,x_train,y_train,x_test,y_test,'mlp1-3x2048-sig-adagrad','mlp1-3x2048-sig-adagrad')
