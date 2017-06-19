@@ -38,11 +38,12 @@ Finally found the mistake after debugging for so long. I was using targets align
 
 # 16 June
 
-I ran the code with all the data as training with maximum length 50 at start
-before running till 150. The sharp peak is where I changed the dataset. It can
-completely learn(by overfitting) the smaller dataset. At least the model seems
-to be working.
+I ran the code with all the data as training with maximum length 50 at start before running till 150. The sharp peak is where I changed the dataset. It can completely learn(by overfitting) the smaller dataset. At least the model seems to be working.
 
 ![Iter2](images/iter-2.png)
 
 Try to modularize codebase and make script based interface. Still not working.
+
+# 18 - 19 June
+
+Add proper strides in the encoding layer, and changed many small things. Also, the script is fully working now. Using script is more natural as I can just tweak the parameters by command line. Also, I did many other experiments and I could get around 35% WER and 10% CER in the evaluation set. I had not got a plot as there were many workarounds just to run the code. This is now fixed and I could now get plot for both training and validation data separately. I can attach the latest results by tomorrow.
