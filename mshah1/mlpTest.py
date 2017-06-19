@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 from keras.models import Sequential
 from keras.optimizers import SGD
 from keras.layers import Input, Dense, Activation, Dropout, add, Conv1D, MaxPooling1D, Reshape, Flatten
@@ -178,8 +178,8 @@ def normalizeByUtterance(data,nFrames):
 	# print data
 	pos = 0
 	for i in xrange(len(nFrames)):
-		sys.stdout.write("\rnormalizing utterance no %d " % i)
-		sys.stdout.flush()
+		stdout.write("\rnormalizing utterance no %d " % i)
+		stdout.flush()
 		data[pos:nFrames[i]] = scaler.fit_transform(data[pos:nFrames[i]])
 		pos = nFrames[i]
 	# print data
@@ -209,7 +209,7 @@ def trainNtest(model,x_train,y_train,x_test,y_test,modelName,plot_name):
 	# scaler.fit(x_train)
 	# x_train = scaler.transform(x_train)
 	print 'pretraining model...'
-	model = preTrain(model,x_train[:3000000],y_train[:3000000])
+	model = preTrain(model,x_train,y_train)
 	print 'starting fit...'
 	history = model.fit(x_train,y_train,epochs=10,batch_size=20000,
 						callbacks=[TestCallback((x_test,y_test))])
@@ -221,18 +221,13 @@ def trainNtest(model,x_train,y_train,x_test,y_test,modelName,plot_name):
 	print 'plotting graphs...'
 	# summarize history for accuracy
 	plt.plot(history.history['acc'])
-	plt.title('model accuracy')
-	plt.ylabel('training accuracy')
-	plt.xlabel('epoch')
-	plt.savefig(plot_name+'_train.png')
-	plt.clf()
-
 	plt.plot(history.history['eval_acc'])
 	plt.title('model accuracy')
-	plt.ylabel('evaluation accuracy')
+	plt.ylabel('accuracy')
 	plt.xlabel('epoch')
-	plt.savefig(plot_name+'_eval.png')
-
+	plt.legend(['training acc', 'testing acc'])
+	plt.savefig(plot_name+'.png')
+	plt.clf()
 
 	# model = load_model("mlp1_phonelabels.h5")
 	# print 'normalizing the data...'
@@ -248,17 +243,17 @@ y_train = meta['Y_Train']
 print 'transforming labels...'
 nClasses = int(np.max(y_train) + 1)
 y_train = to_categorical(y_train, num_classes = nClasses)
-# normalizeByUtterance(x_train,meta['framePos_Train'])
+normalizeByUtterance(x_train,meta['framePos_Train'])
 print 'loading test data...'
 x_test = np.load('wsj0_phonelabels_bracketed_dev.npy')
 y_test = meta['Y_Dev']
 print 'transforming labels...'
 y_test = to_categorical(y_test, num_classes = nClasses)
-# normalizeByUtterance(x_test,meta['framePos_Dev'])
+normalizeByUtterance(x_test,meta['framePos_Dev'] - x_train.shape[0])
 
 
 
-print 'initializing model...'
+# print 'initializing model...'
 # model1 = mlp1(x_train.shape[1], nClasses,0,4096)
 # model2 = mlp1(x_train.shape[1], nClasses,4,2048)
 model = mlp1(x_train.shape[1], nClasses,2,2048)
@@ -266,4 +261,4 @@ print model.summary()
 
 # t1 = threading.Thread(target=trainNtest,args=(model,x_train,y_train,x_test,y_test,'mlp1-3x2048-sig-adagrad','mlp1-3x2048-sig-adagrad'))
 # t2 = threading.Thread(target=trainNtest,args=(model,x_train,y_train,x_test,y_test,'mlp1-3x2048-sig-adagrad','mlp1-3x2048-sig-adagrad'))
-trainNtest(model,x_train,y_train,x_test,y_test,'mlp1-3x2048-sig-adagrad','mlp1-3x2048-sig-adagrad')
+trainNtest(model,x_train,y_train,x_test,y_test,'mlp1-3x2048-sig-adagrad-varNorm','mlp1-3x2048-sig-adagrad-varNorm')
