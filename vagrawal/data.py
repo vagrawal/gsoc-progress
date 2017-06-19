@@ -3,6 +3,7 @@ from python_speech_features.base import mfcc
 import scipy.io.wavfile
 import tensorflow as tf
 import threading
+import random
 
 # A custom class inheriting tf.gfile.Open for providing seek with whence
 class FileOpen(tf.gfile.Open):
@@ -75,9 +76,12 @@ def read_data_thread(
         enqueue_op,
         close_op):
     trans = FileOpen(root + 'transcripts/wsj0/wsj0.trans').readlines()
+    random.shuffle(trans)
     for line in trans:
         text, file = line.split('(')
         text = text[:-1]
+        # Remove sounds
+        text = "".join(text.split("++")[::2])
         text = [vocab_to_int[c] for c in list(text)] + [vocab_to_int['<EOS>']]
         file = file[:-2]
         # Training set

@@ -33,7 +33,7 @@ def wer(r, h):
 
 def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, numcep,
         vocab_to_int, sess, coord, outputs, output_lengths, vocab,
-        step, cost):
+        batch_i, cost):
 
     tf.logging.info("Evaluation started")
     with graph.as_default():
@@ -68,9 +68,9 @@ def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, numcep,
             summary = tf.Summary(value=
                 [tf.Summary.Value(tag="WER_valid", simple_value=tot_wer / tot_ev),
                  tf.Summary.Value(tag="CER_valid", simple_value=tot_cer / tot_ev),
-                 tf.Summary.Value(tag="loss_valid", simple_value=batch_loss / tot_ev)
+                 tf.Summary.Value(tag="loss_valid", simple_value=batch_loss / tot_bat)
                 ])
-            writer.add_summary(summary, global_step=step)
+            writer.add_summary(summary, global_step=batch_i)
             writer.flush()
             coord.request_stop()
     tf.logging.info("Evaluation finished")
@@ -132,7 +132,7 @@ def train(
         writer = tf.summary.FileWriter(job_dir)
         saver = tf.train.Saver()
 
-        for epoch_i in range(1, num_epochs):
+        for epoch_i in range(1, num_epochs + 1):
             tf.Session.reset(None, ['queue'])
             with tf.Session() as sess:
                 if (epoch_i == 1):
@@ -184,7 +184,7 @@ def train(
                             summary = tf.Summary(value=
                                 [tf.Summary.Value(tag="WER", simple_value=tot_wer / pred.shape[0]),
                                  tf.Summary.Value(tag="CER", simple_value=tot_cer / pred.shape[0]),
-                                 tf.Summary.Value(tag="loss", simple_value=batch_loss / pred.shape[0])
+                                 tf.Summary.Value(tag="loss", simple_value=batch_loss / display_step)
                                 ])
                             writer.add_summary(summary, global_step=batch_i)
                             writer.flush()
@@ -200,7 +200,7 @@ def train(
                         sess, checkpoint, step, "Epoch_{}".format(epoch_i))
                 run_eval(graph, job_dir, checkpoint_path, queue, predictions, data_dir,
                         numcep, vocab_to_int, sess, coord, outputs,
-                        output_lengths, vocab, step, cost)
+                        output_lengths, vocab, batch_i, cost)
                 coord.request_stop()
 
 if __name__ == "__main__":
@@ -216,7 +216,7 @@ if __name__ == "__main__":
     parser.add_argument("--beam-width", default=8, type=int)
     parser.add_argument("--learning-rate-decay", default=0.9998, type=float)
     parser.add_argument("--min-learning-rate", default=0.0002, type=int)
-    parser.add_argument("--display-step", default=10, type=int) # Check training loss after every display_step batches
+    parser.add_argument("--display-step", default=20, type=int) # Check training loss after every display_step batches
     parser.add_argument("--data-dir", default='gs://wsj-data/wsj0/')
     parser.add_argument("--job-dir", default='./job/')
     args = parser.parse_args()

@@ -36,13 +36,7 @@ def encoding_layer(
             if layer != num_layers - 1:
                 rnn_inputs = tf.concat(enc_output,2)
                 # Keep only every second element in the sequence
-                rnn_inputs = tf.strided_slice(
-                        rnn_inputs,
-                        [0, 0, 0],
-                        tf.shape(rnn_inputs),
-                        [1, 2, 1],
-                        begin_mask=7,
-                        end_mask=7)
+                rnn_inputs = rnn_inputs[:, ::2, :]
                 input_lengths = (input_lengths + 1) / 2
     # Join outputs since we are using a bidirectional RNN
     enc_output = tf.concat(enc_output,2)
