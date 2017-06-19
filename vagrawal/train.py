@@ -31,37 +31,46 @@ def wer(r, h):
 
 
 
-def run_eval(graph, checkpoint, queue, predictions, data_dir, numcep,
+def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, numcep,
         vocab_to_int, sess, coord, outputs, output_lengths, vocab,
-        step):
+        step, cost):
 
     tf.logging.info("Evaluation started")
     with graph.as_default():
-        writer = tf.summary.FileWriter(checkpoint)
+        writer = tf.summary.FileWriter(job_dir)
+        tf.Session.reset(None, ['queue'])
         with tf.Session() as sess:
-            tf.train.Saver().saver.restore(sess, checkpoint)
+            tf.train.Saver().restore(sess, checkpoint)
             read_data_queue('sd_et_20', queue, data_dir, numcep, vocab_to_int, sess)
             tot_wer = 0.0
             tot_cer = 0.0
+            batch_loss = 0.0
             tot_ev = 0
+            tot_bat = 0
+            coord = tf.train.Coordinator(
+                    clean_stop_exception_types=(
+                        tf.errors.CancelledError,
+                        tf.errors.OutOfRangeError))
 
             with coord.stop_on_exception():
                 while not coord.should_stop():
-                    pred, out, out_len = sess.run([predictions, outputs, output_lengths])
-                    total_ev += pred.shape[0]
+                    pred, out, out_len, loss = sess.run([predictions, outputs,
+                        output_lengths, cost])
+                    tot_ev += pred.shape[0]
+                    tot_bat += 1
+                    batch_loss += loss
                     for i in range(pred.shape[0]):
                         real_out = ''.join([vocab[l] for l in out[i, :out_len[i] - 1]])
                         pred_out = ''.join([vocab[l] for l in pred[i, :]])
                         pred_out = pred_out.split('<')[0]
                         tot_wer += wer(real_out.split(), pred_out.split())
                         tot_cer += wer(list(real_out), list(pred_out))
-                        tot_ev += pred.shape[0]
             summary = tf.Summary(value=
                 [tf.Summary.Value(tag="WER_valid", simple_value=tot_wer / tot_ev),
                  tf.Summary.Value(tag="CER_valid", simple_value=tot_cer / tot_ev),
                  tf.Summary.Value(tag="loss_valid", simple_value=batch_loss / tot_ev)
                 ])
-            writer.add_summary(summary, global_step=batch_i)
+            writer.add_summary(summary, global_step=step)
             writer.flush()
             coord.request_stop()
     tf.logging.info("Evaluation finished")
@@ -103,7 +112,7 @@ def train(
                 dtypes=['float32', 'int32', 'int32', 'int32'],
                 shapes=[[None, numcep], [], [None], []],
                 name='feed_queue')
-            inputs, input_lengths, outputs, output_lengths = queue.dequeue_up_to(batch_size)
+            inputs, input_lengths, outputs, output_lengths = queue.dequeue_many(batch_size)
 
         training_logits, predictions, train_op, cost, step = seq2seq_model(
                 inputs,
@@ -120,10 +129,11 @@ def train(
                 beam_width,
                 learning_rate_tensor)
 
-        writer = tf.summary.FileWriter(checkpoint)
+        writer = tf.summary.FileWriter(job_dir)
         saver = tf.train.Saver()
 
         for epoch_i in range(1, num_epochs):
+            tf.Session.reset(None, ['queue'])
             with tf.Session() as sess:
                 if (epoch_i == 1):
                     sess.run(tf.global_variables_initializer())
@@ -146,7 +156,6 @@ def train(
                         batch_i, _, loss = sess.run(
                                 [step, train_op, cost],
                                 feed_dict={learning_rate_tensor: learning_rate})
-                        print(loss)
 
                         batch_loss += loss
                         end_time = time.time()
@@ -158,8 +167,7 @@ def train(
                                           num_epochs,
                                           batch_i,
                                           batch_loss / display_step,
-                                          batch_time * display_step))
-                            batch_loss = 0.0
+                                          batch_time))
                             tot_wer = 0.0
                             tot_cer = 0.0
 
@@ -180,6 +188,7 @@ def train(
                                 ])
                             writer.add_summary(summary, global_step=batch_i)
                             writer.flush()
+                            batch_loss = 0.0
 
                         # Reduce learning rate, but not below its minimum value
                         learning_rate *= learning_rate_decay
@@ -189,25 +198,25 @@ def train(
                 tf.logging.info("Epoch completed, saving")
                 checkpoint_path = saver.save(
                         sess, checkpoint, step, "Epoch_{}".format(epoch_i))
-                run_eval(graph, checkpoint_path, queue, predictions, data_dir,
+                run_eval(graph, job_dir, checkpoint_path, queue, predictions, data_dir,
                         numcep, vocab_to_int, sess, coord, outputs,
-                        output_lengths, vocab, step)
+                        output_lengths, vocab, step, cost)
                 coord.request_stop()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--numcep", default=13)
-    parser.add_argument("--keep-prob", default=0.8)
-    parser.add_argument("--max-output-len",  default=200)
-    parser.add_argument("--rnn-size", default=256)
-    parser.add_argument("--num-layers",  default=3)
-    parser.add_argument("--batch-size",  default=24)
-    parser.add_argument("--learning-rate", default=0.001)
-    parser.add_argument("--num-epochs", default=16)
-    parser.add_argument("--beam-width", default=8)
-    parser.add_argument("--learning-rate-decay", default=0.9998)
-    parser.add_argument("--min-learning-rate", default=0.0002)
-    parser.add_argument("--display-step", default=10) # Check training loss after every display_step batches
+    parser.add_argument("--numcep", default=13, type=int)
+    parser.add_argument("--keep-prob", default=0.8, type=float)
+    parser.add_argument("--max-output-len",  default=200, type=int)
+    parser.add_argument("--rnn-size", default=256, type=int)
+    parser.add_argument("--num-layers",  default=3, type=int)
+    parser.add_argument("--batch-size",  default=24, type=int)
+    parser.add_argument("--learning-rate", default=0.001, type=float)
+    parser.add_argument("--num-epochs", default=16, type=int)
+    parser.add_argument("--beam-width", default=8, type=int)
+    parser.add_argument("--learning-rate-decay", default=0.9998, type=float)
+    parser.add_argument("--min-learning-rate", default=0.0002, type=int)
+    parser.add_argument("--display-step", default=10, type=int) # Check training loss after every display_step batches
     parser.add_argument("--data-dir", default='gs://wsj-data/wsj0/')
     parser.add_argument("--job-dir", default='./job/')
     args = parser.parse_args()

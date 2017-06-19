@@ -88,5 +88,5 @@ def read_data_thread(
                 input_length: feat.shape[0],
                 output_data: text,
                 output_length:len(text)})
-    sess.run(queue.close_op)
+    sess.run(close_op)
 
