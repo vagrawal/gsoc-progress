@@ -33,7 +33,7 @@ def wer(r, h):
 
 def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, numcep,
         vocab_to_int, sess, coord, outputs, output_lengths, vocab,
-        batch_i, cost):
+        batch_i, cost, keep_prob_tensor):
 
     tf.logging.info("Evaluation started")
     with graph.as_default():
@@ -54,8 +54,9 @@ def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, numcep,
 
             with coord.stop_on_exception():
                 while not coord.should_stop():
-                    pred, out, out_len, loss = sess.run([predictions, outputs,
-                        output_lengths, cost])
+                    pred, out, out_len, loss = sess.run(
+                            [predictions, outputs, output_lengths, cost],
+                            feed_dict={keep_prob_tensor: 1.0})
                     tot_ev += pred.shape[0]
                     tot_bat += 1
                     batch_loss += loss
@@ -105,6 +106,9 @@ def train(
         learning_rate_tensor = tf.placeholder(
                 tf.float32,
                 name='learning_rate')
+        keep_prob_tensor = tf.placeholder(
+                tf.float32,
+                name='keep_prob')
         # https://stackoverflow.com/questions/39204335/can-a-tensorflow-queue-be-reopened-after-it-is-closed
         with tf.container('queue'):
             queue = tf.PaddingFIFOQueue(
@@ -117,7 +121,7 @@ def train(
         training_logits, predictions, train_op, cost, step = seq2seq_model(
                 inputs,
                 outputs,
-                keep_prob,
+                keep_prob_tensor,
                 input_lengths,
                 output_lengths,
                 max_output_len,
@@ -131,6 +135,7 @@ def train(
 
         writer = tf.summary.FileWriter(job_dir)
         saver = tf.train.Saver()
+        batch_loss = 0.0
 
         for epoch_i in range(1, num_epochs + 1):
             tf.Session.reset(None, ['queue'])
@@ -145,7 +150,6 @@ def train(
                             tf.errors.CancelledError,
                             tf.errors.OutOfRangeError))
 
-                batch_loss = 0.0
                 read_data_queue('si_tr_s', queue, data_dir, numcep,
                         vocab_to_int, sess)
 
@@ -155,7 +159,8 @@ def train(
 
                         batch_i, _, loss = sess.run(
                                 [step, train_op, cost],
-                                feed_dict={learning_rate_tensor: learning_rate})
+                                feed_dict={learning_rate_tensor: learning_rate,
+                                    keep_prob_tensor: keep_prob})
 
                         batch_loss += loss
                         end_time = time.time()
@@ -171,7 +176,9 @@ def train(
                             tot_wer = 0.0
                             tot_cer = 0.0
 
-                            pred, out, out_len = sess.run([predictions, outputs, output_lengths])
+                            pred, out, out_len = sess.run(
+                                    [predictions, outputs, output_lengths],
+                                    feed_dict={keep_prob_tensor: 1.0})
                             for i in range(pred.shape[0]):
                                 real_out = ''.join([vocab[l] for l in out[i, :out_len[i] - 1]])
                                 pred_out = ''.join([vocab[l] for l in pred[i, :]])
@@ -200,7 +207,7 @@ def train(
                         sess, checkpoint, step, "Epoch_{}".format(epoch_i))
                 run_eval(graph, job_dir, checkpoint_path, queue, predictions, data_dir,
                         numcep, vocab_to_int, sess, coord, outputs,
-                        output_lengths, vocab, batch_i, cost)
+                        output_lengths, vocab, batch_i, cost, keep_prob_tensor)
                 coord.request_stop()
 
 if __name__ == "__main__":
