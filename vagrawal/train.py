@@ -90,7 +90,8 @@ def train(
         min_learning_rate,
         display_step,
         data_dir,
-        job_dir):
+        job_dir,
+        checkpoint_path):
 
     vocab = np.asarray(
             list(" '+-.ABCDEFGHIJKLMNOPQRSTUVWXYZ_") + ['<GO>', '<EOS>'])
@@ -140,7 +141,7 @@ def train(
         for epoch_i in range(1, num_epochs + 1):
             tf.Session.reset(None, ['queue'])
             with tf.Session() as sess:
-                if (epoch_i == 1):
+                if (checkpoint_path is None):
                     sess.run(tf.global_variables_initializer())
                     sess.run(tf.local_variables_initializer())
                 else:
@@ -226,5 +227,6 @@ if __name__ == "__main__":
     parser.add_argument("--display-step", default=20, type=int) # Check training loss after every display_step batches
     parser.add_argument("--data-dir", default='gs://wsj-data/wsj0/')
     parser.add_argument("--job-dir", default='./job/')
+    parser.add_argument("--checkpoint-path", default=None)
     args = parser.parse_args()
     train(**args.__dict__)
