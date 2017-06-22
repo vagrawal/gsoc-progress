@@ -62,7 +62,8 @@ optional arguments:
 Current results
 ---------------
 
-Final results coming soon.
+Default options seems to give 30-40% WER, and 10-20% CER in validation set. The
+measurements are quite noisy for these measures between epochs.
 
 Future aims
 -----------

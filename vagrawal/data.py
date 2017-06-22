@@ -17,7 +17,7 @@ class FileOpen(tf.gfile.Open):
 
 def get_features(file, numcep):
     sample_rate, signal = scipy.io.wavfile.read(FileOpen(file))
-    features = mfcc(signal, sample_rate, numcep=numcep)
+    features = mfcc(signal, sample_rate, numcep=numcep, nfilt=2*numcep)
     return features
 
 def read_data(root, numcep, vocab_to_int, sess):
@@ -87,6 +87,8 @@ def read_data_thread(
         # Training set
         if (set_id == file.split('/')[2] and 'wv1' == file.split('.')[1]):
             feat = get_features(root + 'wav/' + file, numcep)
+            feat = feat - np.mean(feat, 0)
+            feat = feat / np.sqrt(np.var(feat, 0))
             sess.run(enqueue_op, feed_dict={
                 input_data: feat,
                 input_length: feat.shape[0],
