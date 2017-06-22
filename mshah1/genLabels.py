@@ -119,12 +119,18 @@ def genDataset(DB_path, filelist, stseg_path, mdef_fname, context_len=None):
 	# t = threading.Thread(target=ping)
 	# t.start()
 	if context_len != None:
-		np.save('wsj0_phonelabels_bracketed_train.npy',X_Train)
-		np.save('wsj0_phonelabels_bracketed_test.npy',X_Test)
-		np.save('wsj0_phonelabels_bracketed_dev.npy',X_Dev)
-		np.savez('wsj0_phonelabels_bracketed_meta.npz',Y_Train=Y_Train,Y_Test=Y_Test,Y_Dev=Y_Dev,framePos_Train=framePos_Train,framePos_Test=framePos_Test,framePos_Dev=framePos_Dev)
+		# np.save('wsj0_phonelabels_bracketed_train.npy',X_Train)
+		# np.save('wsj0_phonelabels_bracketed_test.npy',X_Test)
+		# np.save('wsj0_phonelabels_bracketed_dev.npy',X_Dev)
+		np.save('wsj0_phonelabels_bracketed_train_labels.npy',Y_Train)
+		np.save('wsj0_phonelabels_bracketed_test_labels.npy',Y_Test)
+		np.save('wsj0_phonelabels_bracketed_dev_labels.npy',Y_Dev)
+		# np.savez('wsj0_phonelabels_bracketed_meta.npz',framePos_Train=framePos_Train,framePos_Test=framePos_Test,framePos_Dev=framePos_Dev)
 	else:	
-		np.savez('wsj0_phonelabels',X_Train=X_Train,Y_Train=Y_Train,X_Test=X_Test,Y_Test=Y_Test,framePos_Train=framePos_Train,framePos_Test=framePos_Test,framePos_Dev=framePos_Dev)
+		np.save('wsj0_phonelabels_train.npy',X_Train)
+		np.save('wsj0_phonelabels_test.npy',X_Test)
+		np.save('wsj0_phonelabels_dev.npy',X_Dev)
+		np.savez('wsj0_phonelabels_meta.npz',Y_Train=Y_Train,Y_Test=Y_Test,Y_Dev=Y_Dev,framePos_Train=framePos_Train,framePos_Test=framePos_Test,framePos_Dev=framePos_Dev)
 	# done = 1
 
 def normalizeByUtterance():
