@@ -47,3 +47,13 @@ Try to modularize codebase and make script based interface. Still not working.
 # 18 - 19 June
 
 Add proper strides in the encoding layer, and changed many small things. Also, the script is fully working now. Using script is more natural as I can just tweak the parameters by command line. Also, I did many other experiments and I could get around 35% WER and 10% CER in the evaluation set. I had not got a plot as there were many workarounds just to run the code. This is now fixed and I could now get plot for both training and validation data separately. I can attach the latest results by tomorrow.
+
+# 21 - 22 June
+
+Experimented with many options for training. Default options seems to give 30-40% WER, and 10-20% CER. The measurements are quite noisy for these measures between epochs. Training WER can get as low as 10%, so I plan to using wsj1 dataset too. On the code side there is not much progress, as the training time of the models are quite long, around 1 hours per epoch in GPU.
+
+Also read many research papers in this time.
+
+# 23 June
+
+Added per file features normalization.
