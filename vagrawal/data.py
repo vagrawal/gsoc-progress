@@ -17,7 +17,7 @@ class FileOpen(tf.gfile.Open):
 
 def get_features(file, numcep):
     sample_rate, signal = scipy.io.wavfile.read(FileOpen(file))
-    features = mfcc(signal, sample_rate, numcep=numcep)
+    features = mfcc(signal, sample_rate, numcep=numcep, nfilt=2*numcep)
     return features
 
 def read_data(root, numcep, vocab_to_int, sess):

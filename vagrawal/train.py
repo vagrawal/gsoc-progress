@@ -41,7 +41,7 @@ def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, numcep,
         tf.Session.reset(None, ['queue'])
         with tf.Session() as sess:
             tf.train.Saver().restore(sess, checkpoint)
-            read_data_queue('sd_et_20', queue, data_dir, numcep, vocab_to_int, sess)
+            read_data_queue('si_et_05', queue, data_dir, numcep, vocab_to_int, sess)
             tot_wer = 0.0
             tot_cer = 0.0
             batch_loss = 0.0
@@ -158,8 +158,8 @@ def train(
                     while not coord.should_stop():
                         start_time = time.time()
 
-                        batch_i, _, loss = sess.run(
-                                [step, train_op, cost],
+                        loss, _, batch_i = sess.run(
+                                [cost, train_op, step],
                                 feed_dict={learning_rate_tensor: learning_rate,
                                     keep_prob_tensor: keep_prob})
 
@@ -205,13 +205,14 @@ def train(
 
                 tf.logging.info("Epoch completed, saving")
                 checkpoint_path = saver.save(
-                        sess, checkpoint, step, "Epoch_{}".format(epoch_i))
+                        sess, checkpoint, step)
                 run_eval(graph, job_dir, checkpoint_path, queue, predictions, data_dir,
                         numcep, vocab_to_int, sess, coord, outputs,
                         output_lengths, vocab, batch_i, cost, keep_prob_tensor)
                 coord.request_stop()
 
 if __name__ == "__main__":
+    tf.logging.set_verbosity(tf.logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument("--numcep", default=13, type=int)
     parser.add_argument("--keep-prob", default=0.8, type=float)
@@ -223,7 +224,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-epochs", default=16, type=int)
     parser.add_argument("--beam-width", default=8, type=int)
     parser.add_argument("--learning-rate-decay", default=0.9998, type=float)
-    parser.add_argument("--min-learning-rate", default=0.0002, type=int)
+    parser.add_argument("--min-learning-rate", default=0.0002, type=float)
     parser.add_argument("--display-step", default=20, type=int) # Check training loss after every display_step batches
     parser.add_argument("--data-dir", default='gs://wsj-data/wsj0/')
     parser.add_argument("--job-dir", default='./job/')
