@@ -1,3 +1,3 @@
-# MLP-HMM_cmusphinx
+# Incorporating DNNs in CMUsphinx
 
-This is the repo for gsoc 2017 where I'll implement MLPs in CMUsphinx
+This is my repo for gsoc 2017 with CMUsphinx.I shall upload all my code here
