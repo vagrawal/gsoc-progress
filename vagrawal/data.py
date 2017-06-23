@@ -1,5 +1,5 @@
 import numpy as np
-from python_speech_features.base import mfcc
+from python_speech_features.base import fbank, delta
 import scipy.io.wavfile
 import tensorflow as tf
 import threading
@@ -15,28 +15,40 @@ class FileOpen(tf.gfile.Open):
         else:
             raise FileError
 
-def get_features(file, numcep):
+def get_features(file, nfilt):
     sample_rate, signal = scipy.io.wavfile.read(FileOpen(file))
-    features = mfcc(signal, sample_rate, numcep=numcep, nfilt=2*numcep)
-    return features
+    feat, energy = fbank(signal, sample_rate, nfilt=nfilt)
+    feat = np.log(feat)
+    dfeat = delta(feat, 2)
+    ddfeat = delta(dfeat, 2)
+    return np.concatenate([feat, dfeat, ddfeat, np.expand_dims(energy, 1)], axis=1)
 
-def read_data(root, numcep, vocab_to_int, sess):
-    train_queue = tf.PaddingFIFOQueue(
-        capacity=64,
-        dtypes=['float32', 'int32', 'int32', 'int32'],
-        shapes=[[None, numcep], [], [None], []])
-    read_data_queue('si_tr_s', train_queue, root, numcep, vocab_to_int, sess)
+def get_speaker_stats(root, nfilt, set_ids):
+    trans = FileOpen(root + 'transcripts/wsj0/wsj0.trans').readlines()
+    sum = {}
+    sum_sq = {}
+    count = {}
+    for line in trans:
+        _, file = line.split('(')
+        file = file[:-2]
+        if (file.split('/')[2] in set_ids and 'wv1' == file.split('.')[1]):
+            speaker = file.split('/')[3]
+            n_feat = 3 * nfilt + 1
+            if speaker not in sum:
+                sum[speaker] = np.zeros(n_feat)
+                sum_sq[speaker] = np.zeros(n_feat)
+                count[speaker] = 0
+            feat = get_features(root + 'wav/' + file, nfilt)
+            sum[speaker] += np.mean(feat, 0)
+            sum_sq[speaker] += np.mean(np.square(feat), 0)
+            count[speaker] += 1
+    mean =  {k: sum[k] / count[k] for k, v in sum.items()}
+    var =  {k: sum_sq[k] / count[k] - np.square(mean[k]) for k, v in sum.items()}
+    return mean, var
 
-    valid_queue = tf.PaddingFIFOQueue(
-        capacity=64,
-        dtypes=['float32', 'int32', 'int32', 'int32'],
-        shapes=[[None, numcep], [], [None], []])
-    read_data_queue('sd_et_20', valid_queue, root, numcep, vocab_to_int, sess)
-
-    return train_queue, valid_queue
-
-def read_data_queue(set_id, queue, root, numcep, vocab_to_int, sess):
-    input_data = tf.placeholder(dtype=tf.float32, shape=[None, numcep])
+def read_data_queue(set_id, queue, root, nfilt, vocab_to_int, sess,
+        mean_speaker, var_speaker):
+    input_data = tf.placeholder(dtype=tf.float32, shape=[None, nfilt * 3 + 1])
     input_length = tf.placeholder(dtype=tf.int32, shape=[])
     output_data = tf.placeholder(dtype=tf.int32, shape=[None])
     output_length =  tf.placeholder(dtype=tf.int32, shape=[])
@@ -49,7 +61,7 @@ def read_data_queue(set_id, queue, root, numcep, vocab_to_int, sess):
         args=(
             set_id,
             root,
-            numcep,
+            nfilt,
             vocab_to_int,
             queue,
             sess,
@@ -58,14 +70,16 @@ def read_data_queue(set_id, queue, root, numcep, vocab_to_int, sess):
             output_data,
             output_length,
             enqueue_op,
-            close_op))
+            close_op,
+            mean_speaker,
+            var_speaker))
     thread.daemon = True  # Thread will close when parent quits.
     thread.start()
 
 def read_data_thread(
         set_id,
         root,
-        numcep,
+        nfilt,
         vocab_to_int,
         queue,
         sess,
@@ -74,7 +88,9 @@ def read_data_thread(
         output_data,
         output_length,
         enqueue_op,
-        close_op):
+        close_op,
+        mean_speaker,
+        var_speaker):
     trans = FileOpen(root + 'transcripts/wsj0/wsj0.trans').readlines()
     random.shuffle(trans)
     for line in trans:
@@ -84,11 +100,10 @@ def read_data_thread(
         text = "".join(text.split("++")[::2])
         text = [vocab_to_int[c] for c in list(text)] + [vocab_to_int['<EOS>']]
         file = file[:-2]
-        # Training set
         if (set_id == file.split('/')[2] and 'wv1' == file.split('.')[1]):
-            feat = get_features(root + 'wav/' + file, numcep)
-            feat = feat - np.mean(feat, 0)
-            feat = feat / np.sqrt(np.var(feat, 0))
+            feat = get_features(root + 'wav/' + file, nfilt)
+            feat = feat - mean_speaker[file.split('/')[3]]
+            feat = feat / np.sqrt(var_speaker[file.split('/')[3]])
             sess.run(enqueue_op, feed_dict={
                 input_data: feat,
                 input_length: feat.shape[0],

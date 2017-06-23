@@ -57,3 +57,7 @@ Also read many research papers in this time.
 # 23 June
 
 Added per file features normalization.
+
+# 24 June
+
+Added per speaker normalization and changed to using mel filterbank coefficients.

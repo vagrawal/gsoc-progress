@@ -2,7 +2,7 @@ import os
 import tensorflow as tf
 import numpy as np
 from seq2seq_model import seq2seq_model
-from data import read_data_queue
+from data import read_data_queue, get_speaker_stats
 import time
 import argparse
 
@@ -31,9 +31,9 @@ def wer(r, h):
 
 
 
-def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, numcep,
+def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, nfilt,
         vocab_to_int, sess, coord, outputs, output_lengths, vocab,
-        batch_i, cost, keep_prob_tensor):
+        batch_i, cost, keep_prob_tensor, mean_speaker, var_speaker):
 
     tf.logging.info("Evaluation started")
     with graph.as_default():
@@ -41,7 +41,8 @@ def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, numcep,
         tf.Session.reset(None, ['queue'])
         with tf.Session() as sess:
             tf.train.Saver().restore(sess, checkpoint)
-            read_data_queue('si_et_05', queue, data_dir, numcep, vocab_to_int, sess)
+            read_data_queue('si_et_05', queue, data_dir, nfilt, vocab_to_int,
+                    sess, mean_speaker, var_speaker)
             tot_wer = 0.0
             tot_cer = 0.0
             batch_loss = 0.0
@@ -77,7 +78,7 @@ def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, numcep,
     tf.logging.info("Evaluation finished")
 
 def train(
-        numcep,
+        nfilt,
         keep_prob,
         max_output_len,
         rnn_size,
@@ -102,6 +103,9 @@ def train(
 
     checkpoint = job_dir + 'checkpoints/'
 
+    mean_speaker, var_speaker = get_speaker_stats(data_dir, nfilt,
+            ['si_et_05', 'si_tr_s'])
+
     graph = tf.Graph()
     with graph.as_default():
         learning_rate_tensor = tf.placeholder(
@@ -115,7 +119,7 @@ def train(
             queue = tf.PaddingFIFOQueue(
                 capacity=64,
                 dtypes=['float32', 'int32', 'int32', 'int32'],
-                shapes=[[None, numcep], [], [None], []],
+                shapes=[[None, nfilt * 3 + 1], [], [None], []],
                 name='feed_queue')
             inputs, input_lengths, outputs, output_lengths = queue.dequeue_many(batch_size)
 
@@ -151,8 +155,8 @@ def train(
                             tf.errors.CancelledError,
                             tf.errors.OutOfRangeError))
 
-                read_data_queue('si_tr_s', queue, data_dir, numcep,
-                        vocab_to_int, sess)
+                read_data_queue('si_tr_s', queue, data_dir, nfilt,
+                        vocab_to_int, sess, mean_speaker, var_speaker)
 
                 with coord.stop_on_exception():
                     while not coord.should_stop():
@@ -207,14 +211,14 @@ def train(
                 checkpoint_path = saver.save(
                         sess, checkpoint, step)
                 run_eval(graph, job_dir, checkpoint_path, queue, predictions, data_dir,
-                        numcep, vocab_to_int, sess, coord, outputs,
+                        nfilt, vocab_to_int, sess, coord, outputs,
                         output_lengths, vocab, batch_i, cost, keep_prob_tensor)
                 coord.request_stop()
 
 if __name__ == "__main__":
     tf.logging.set_verbosity(tf.logging.INFO)
     parser = argparse.ArgumentParser()
-    parser.add_argument("--numcep", default=13, type=int)
+    parser.add_argument("--nfilt", default=40, type=int)
     parser.add_argument("--keep-prob", default=0.8, type=float)
     parser.add_argument("--max-output-len",  default=200, type=int)
     parser.add_argument("--rnn-size", default=256, type=int)
