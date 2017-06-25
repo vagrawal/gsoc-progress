@@ -61,3 +61,9 @@ Added per file features normalization.
 # 24 June
 
 Added per speaker normalization and changed to using mel filterbank coefficients.
+
+# 25 June
+
+Started work on language model. Also I am getting 29.77% WER and 12.73 CER using the latest code.
+
+![Iter3](images/iter-3.png)

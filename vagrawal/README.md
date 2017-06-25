@@ -62,8 +62,11 @@ optional arguments:
 Current results
 ---------------
 
-Default options seems to give 30-40% WER, and 10-20% CER in validation set. The
-measurements are quite noisy for these measures between epochs.
+I am getting 29.77% WER and 12.73 CER for validation set using the latest code
+(91c2ed5).
+
+![Iter3](images/iter-3.png)
+
 
 Future aims
 -----------
