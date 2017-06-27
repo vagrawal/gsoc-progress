@@ -208,10 +208,10 @@ def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],train_layer_0=F
 	              loss='categorical_crossentropy',
 	              metrics=['accuracy'])
 		print model_new.summary()
-		# model_new.fit(x_train,y_train,epochs=3,batch_size=2048)
-		model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
-										steps_per_epoch=len(meta['framePos_Train']), epochs=3,
-										callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,monitor='loss',mode='min')])
+		model_new.fit(x_train,y_train,epochs=3,batch_size=2048)
+		# model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
+		# 								steps_per_epoch=len(meta['framePos_Train']), epochs=3,
+		# 								callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,monitor='loss',mode='min')])
 		model.layers[i].set_weights(model_new.layers[-2].get_weights())
 	for l in model.layers:
 		l.trainable = True
@@ -234,15 +234,15 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,plot_name,test
 			model = preTrain(model,modelName,x_train,y_train,meta)
 		print model.summary()
 		print 'starting fit...'
-		# history = model.fit(x_train,y_train,epochs=10,batch_size=2048,
-		# 					callbacks=[TestCallback((x_test,y_test))])
+		history = model.fit(x_train,y_train,epochs=10,batch_size=2048,
+							validation_data=(x_test,y_test))
 		# EarlyStopping(monitor='val_acc',min_delta=0.25,patience=1,mode='max')
-		history = model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
-										steps_per_epoch=len(meta['framePos_Train']), epochs=30,
-										validation_data=gen_bracketed_data(x_test,y_test,meta['framePos_Dev'],4),
-										validation_steps = len(meta['framePos_Dev']),
-										callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,mode='min'),
-													EarlyStopping(monitor='val_acc',min_delta=0.0025,patience=1,mode='max')])
+		# history = model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
+		# 								steps_per_epoch=len(meta['framePos_Train']), epochs=30,
+		# 								validation_data=gen_bracketed_data(x_test,y_test,meta['framePos_Dev'],4),
+		# 								validation_steps = len(meta['framePos_Dev']),
+		# 								callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,mode='min'),
+		# 											EarlyStopping(monitor='val_acc',min_delta=0.0025,patience=1,mode='max')])
 		print 'saving model...'
 		model.save(modelName+'.h5')
 		print(history.history.keys())
@@ -319,21 +319,21 @@ def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,context_len=4):
 		writeSenScores(res_file_path,preds)
 
 print 'loading data...'
-meta = np.load('wsj0_phonelabels_meta.npz')
-x_train = np.load('wsj0_phonelabels_train.npy')
-y_train = np.load('wsj0_phonelabels_train_labels.npy')
+meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
+x_train = np.load('wsj0_phonelabels_bracketed_train.npy')
+y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
 nClasses = np.max(y_train) + 1
-# print 'transforming labels...'
-# y_train = to_categorical(y_train, num_classes = nClasses)
+print 'transforming labels...'
+y_train = to_categorical(y_train, num_classes = nClasses)
 
 print 'loading test data...'
-x_test = np.load('wsj0_phonelabels_dev.npy')
-y_test = np.load('wsj0_phonelabels_dev_labels.npy')
-# print 'transforming labels...'
-# y_test = to_categorical(y_test, num_classes = nClasses)
+x_test = np.load('wsj0_phonelabels_bracketed_dev.npy')
+y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
+print 'transforming labels...'
+y_test = to_categorical(y_test, num_classes = nClasses)
 
 print 'initializing model...'
-model = mlp4(x_train.shape[1]*9, nClasses,10,2048,BN=True)
+model = mlp1(x_train.shape[1], nClasses,2,2048,BN=True)
 # model = DBN_DNN(x_train, nClasses,3,2048)
 trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-20x2048-sig-adagrad','mlp4-20x2048-sig-adagrad',pretrain=False)
 
