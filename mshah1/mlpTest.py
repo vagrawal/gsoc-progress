@@ -1,7 +1,8 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+CUDA_VISIBLE_DEVICES = '0,1,2,3'
+os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 from keras.models import Sequential
-from keras.optimizers import SGD
+from keras.optimizers import SGD,Adagrad
 from keras.layers.normalization import BatchNormalization
 from keras.layers import Input, Dense, Activation, Dropout, Conv1D, MaxPooling1D, Reshape, Flatten
 from keras.layers.merge import add
@@ -19,6 +20,7 @@ from sklearn.preprocessing import StandardScaler
 from guppy import hpy
 import threading
 import struct
+from multi_gpu import make_parallel
 # import matplotlib as mpl
 # print mpl.matplotlib_fname()
 # mpl.rcParams['backend'] = 'agg'
@@ -35,6 +37,7 @@ def mlp1(input_dim,output_dim,depth,width,dropout=False,BN=False):
 		if BN:
 			model.add(BatchNormalization())
 	model.add(Dense(output_dim, activation='softmax'))
+	opt = Adagrad(lr=1/(np.sqrt(input_dim) * np.sqrt(width)))
 	model.compile(optimizer='adagrad',
 	              loss='categorical_crossentropy',
 	              metrics=['accuracy'])
@@ -71,31 +74,44 @@ def mlp3(input_dim,output_dim):
 	              metrics=['accuracy'])
 	return model
 
+def _bn_relu(input):
+    """Helper to build a BN -> relu block
+    """
+    norm = BatchNormalization()(input)
+    return Activation("relu")(norm)
+
 def make_dense_res_block(inp, size, width, drop=False,BN=False):
 	x = inp
 	for i in range(size):
-		x = Dense(width, activation='relu')(x)
+		x = Dense(width)(x)
 		if drop:
 			x = Dropout(0.25)(x)
 		if BN:
-			x = BatchNormalization()(x)
+			x = _bn_relu(x)
 	return x
 
-def mlp4(input_dim,output_dim,nBlocks,width, drop=False, BN=False):
+def mlp4(input_dim,output_dim,nBlocks,width, block_width=None, drop=False, BN=False):
+	if block_width == None:
+		block_width = width
 	inp = Input(shape=(input_dim,))
-	# x = Reshape((input_dim,1))(inp)
+	# x = Reshape((input_dim,9))(inp)
 	# x = Conv1D(64,4,padding='same',activation='relu')(x)
 	# x = MaxPooling1D(3,padding='same')(x)
 	# x = Flatten()(x)
-	x = Dense(width, activation='relu')(inp)
+	x = Dense(width)(inp)
 	if BN:
-		x = BatchNormalization()(x)
+		x = _bn_relu(x)
 	for i in range(nBlocks):
-		y = make_dense_res_block(x,1,width,BN=BN,drop=drop)
+		y = make_dense_res_block(x,3,block_width,BN=BN,drop=drop)
+		if block_width != width:
+			y = Dense(width)(x)
 		x = add([x,y])
 	z = Dense(output_dim, activation='softmax')(x)
 	model = Model(inputs=inp, outputs=z)
-	model.compile(optimizer='adadelta',
+	model = make_parallel(model, len(CUDA_VISIBLE_DEVICES.split(',')))
+	opt = Adagrad(lr=1/(np.sqrt(input_dim * width)))
+	# opt = SGD(lr=1/(np.sqrt(input_dim * width)), decay=1e-6, momentum=0.9, nesterov=True)
+	model.compile(optimizer=opt,
 	              loss='categorical_crossentropy',
 	              metrics=['accuracy'])
 	return model
@@ -148,6 +164,7 @@ def processByUtterance(data,nFrames,fn):
 
 
 def gen_bracketed_data(alldata,alllabels,nFrames,context_len):
+	batch_size = 512
 	while 1:
 		pos = 0
 		nClasses = np.max(alllabels) + 1
@@ -155,7 +172,8 @@ def gen_bracketed_data(alldata,alllabels,nFrames,context_len):
 			data = alldata[pos:pos + nFrames[i]]
 			labels = alllabels[pos:pos + nFrames[i]]
 
-			labels = to_categorical(labels,num_classes=nClasses)
+			if len(labels.shape) == 1:
+				labels = to_categorical(labels,num_classes=nClasses)
 			pad_top = np.zeros((context_len,data.shape[1]))
 			pad_bot = np.zeros((context_len,data.shape[1]))
 			padded_data = np.concatenate((pad_top,data),axis=0)
@@ -167,8 +185,20 @@ def gen_bracketed_data(alldata,alllabels,nFrames,context_len):
 				new_row = new_row.flatten()
 				data.append(new_row)
 			data = np.array(data)
-			pos += nFrames[i]
+			# if data.shape[0] < batch_size:
+			# 	pad_bot = np.zeros((batch_size-data.shape[0],data.shape[1])) + data[-1]
+			# 	data = np.concatenate((data,pad_bot),axis=0)
+			# 	pad_bot = np.zeros((batch_size-labels.shape[0],labels.shape[1])) + labels[-1]
+			# 	labels = np.concatenate((labels,pad_bot),axis=0)
+			# 	yield (data,labels)
+			# if data.shape[0] > batch_size:
+			# 	n_batches = data.shape[0] / batch_size + int(data.shape[0] % batch_size != 0)
+			# 	for j in range(n_batches):
+			# 		data = np.array(data[j*batch_size:(j+1)*batch_size])
+			# 		labels = np.array(labels[j*batch_size:(j+1)*batch_size])
+			# 		yield (data,labels)
 			yield (data,labels)
+			pos += nFrames[i]
 
 class TestCallback(History):
     def __init__(self, test_data, nFrames):
@@ -208,10 +238,10 @@ def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],train_layer_0=F
 	              loss='categorical_crossentropy',
 	              metrics=['accuracy'])
 		print model_new.summary()
-		model_new.fit(x_train,y_train,epochs=3,batch_size=2048)
-		# model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
-		# 								steps_per_epoch=len(meta['framePos_Train']), epochs=3,
-		# 								callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,monitor='loss',mode='min')])
+		# model_new.fit(x_train,y_train,epochs=3,batch_size=2048)
+		model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
+										steps_per_epoch=len(meta['framePos_Train']), epochs=3,
+										callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,monitor='loss',mode='min')])
 		model.layers[i].set_weights(model_new.layers[-2].get_weights())
 	for l in model.layers:
 		l.trainable = True
@@ -234,15 +264,16 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,plot_name,test
 			model = preTrain(model,modelName,x_train,y_train,meta)
 		print model.summary()
 		print 'starting fit...'
-		history = model.fit(x_train,y_train,epochs=10,batch_size=2048,
-							validation_data=(x_test,y_test))
+
+		history = model.fit(x_train,y_train,epochs=50,batch_size=2048,
+							validation_data=(x_test,y_test),
+							callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,mode='min')])
 		# EarlyStopping(monitor='val_acc',min_delta=0.25,patience=1,mode='max')
 		# history = model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
 		# 								steps_per_epoch=len(meta['framePos_Train']), epochs=30,
 		# 								validation_data=gen_bracketed_data(x_test,y_test,meta['framePos_Dev'],4),
 		# 								validation_steps = len(meta['framePos_Dev']),
-		# 								callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,mode='min'),
-		# 											EarlyStopping(monitor='val_acc',min_delta=0.0025,patience=1,mode='max')])
+		# 								callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,mode='min')])
 		print 'saving model...'
 		model.save(modelName+'.h5')
 		print(history.history.keys())
@@ -320,22 +351,30 @@ def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,context_len=4):
 
 print 'loading data...'
 meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
-x_train = np.load('wsj0_phonelabels_bracketed_train.npy')
+x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
 y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
-nClasses = np.max(y_train) + 1
+end = x_train.shape[0] % 2048
+x_train = x_train[:-end]
+y_train = y_train[:-end]
+nClasses = 132
 print 'transforming labels...'
 y_train = to_categorical(y_train, num_classes = nClasses)
 
 print 'loading test data...'
-x_test = np.load('wsj0_phonelabels_bracketed_dev.npy')
+x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
 y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
+end = x_test.shape[0] % 2048
+x_test = x_test[:-end]
+y_test = y_test[:-end]
+# x_test = x_train
+# y_test = y_train
 print 'transforming labels...'
 y_test = to_categorical(y_test, num_classes = nClasses)
 
 print 'initializing model...'
-model = mlp1(x_train.shape[1], nClasses,2,2048,BN=True)
+model = mlp4(x_train.shape[1], nClasses,17,2048,BN=True)
 # model = DBN_DNN(x_train, nClasses,3,2048)
-trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-20x2048-sig-adagrad','mlp4-20x2048-sig-adagrad',pretrain=False)
+trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-20x2048-relu-adagrad','mlp4-20x2048-relu-adagrad',pretrain=False)
 
 # model = load_model('mlp1-3x2048-sig-adagrad-drop-BN.h5')
 # getPreds(model,'/home/mshah1/wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_mls/','.mls','/home/mshah1/wsj/wsj0/senscores/','.sen')
