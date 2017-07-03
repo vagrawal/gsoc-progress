@@ -73,3 +73,7 @@ Started work on language model. Also I am getting 29.77% WER and 12.73 CER using
 Stuck in some very fundamental problems with implementing LMs. I planned to use word based LM, but in doing so I need to iterate over every word and update probabilty for the word DAG every time it selects a space, and then in the beam search I have to store the current node for every beam, and adjust the probabilty score accordingly. It's too overwhelming to do that inside tensorflow. I can always move entire thing to plain python, but it will be too much back and forth movement as I need to store the state of RNNs every time model predicts next character.
 
 That's why I am now starting with character based language model. As much I looked in other people's work, they are comparable in perplexity to trigram LMs. Best LM models seems to use embeded word based RNNs, which are equally difficult to use. The code is just for the progress and is not working.
+
+# 1 July - 3 July
+
+Made progress in language model. The model is still not working. I think I will have a working code and results in a day or two. Much of the thought in the model is done, the remaining part is to train a model and then use pre-trained model from then in the acoustic model's inference part.

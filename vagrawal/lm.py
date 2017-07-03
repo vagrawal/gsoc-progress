@@ -3,7 +3,7 @@ import tensorflow as tf
 from tensorflow.python.layers.core import Dense
 from tensorflow.python.ops.rnn_cell_impl import _zero_state_tensors
 
-def next_symbol_probs(
+def rnn_cell(
         rnn_size,
         lengths,
         num_layers,
@@ -21,6 +21,32 @@ def next_symbol_probs(
     cell = tf.contrib.rnn.MultiRNNCell(
             [cell for _ in range(num_layers)], state_is_tuple=True)
 
+def training_decoding_layer(
+        data,
+        lengths,
+        vocab_size,
+        enc_output,
+        input_lengths,
+        batch_size,
+        start_token):
+
+    training_helper = tf.contrib.seq2seq.TrainingHelper(
+            inputs=data,
+            sequence_length=lengths,
+            time_major=False)
+
+    training_decoder = tf.contrib.seq2seq.BasicDecoder(
+            rnn_cell,
+            training_helper,
+            initial_state,
+            output_layer)
+
+    training_logits, _, _ = tf.contrib.seq2seq.dynamic_decode(
+            training_decoder,
+            output_time_major=False,
+            impute_finished = True)
+
+    return training_logits
 
 def language_model(
         data,
@@ -31,17 +57,25 @@ def language_model(
         num_layers,
         vocab_to_int,
         batch_size,
-        beam_width,
         learning_rate):
 
       # Create the weights for sequence_loss
     masks = tf.sequence_mask(
-            output_lengths,
+            lengths,
             tf.reduce_max(output_lengths),
             dtype=tf.float32,
-            name='masks')
+            name='lm_masks')
 
-    with tf.name_scope("optimization"):
+    training_logits = training_decoding_layer(
+            data,
+            lengths,
+            vocab_size,
+            enc_output,
+            input_lengths,
+            batch_size,
+            vocab_to_int['<GO>'])
+
+    with tf.name_scope("lm_optimization"):
         # Loss function
         cost = tf.contrib.seq2seq.sequence_loss(
             training_logits,
