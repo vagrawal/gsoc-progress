@@ -77,3 +77,9 @@ That's why I am now starting with character based language model. As much I look
 # 1 July - 3 July
 
 Made progress in language model. The model is still not working. I think I will have a working code and results in a day or two. Much of the thought in the model is done, the remaining part is to train a model and then use pre-trained model from then in the acoustic model's inference part.
+
+# 4 July
+
+Get away with self made LM. And add penalization in beam search.
+
+Use best of best n in evaluation.

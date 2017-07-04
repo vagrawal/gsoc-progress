@@ -33,7 +33,8 @@ def wer(r, h):
 
 def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, nfilt,
         vocab_to_int, sess, coord, outputs, output_lengths, vocab,
-        batch_i, cost, keep_prob_tensor, mean_speaker, var_speaker):
+        batch_i, cost, keep_prob_tensor, mean_speaker, var_speaker,
+        bestr_n_inference):
 
     tf.logging.info("Evaluation started")
     with graph.as_default():
@@ -62,11 +63,16 @@ def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, nfilt,
                     tot_bat += 1
                     batch_loss += loss
                     for i in range(pred.shape[0]):
-                        real_out = ''.join([vocab[l] for l in out[i, :out_len[i] - 1]])
-                        pred_out = ''.join([vocab[l] for l in pred[i, :]])
-                        pred_out = pred_out.split('<')[0]
-                        tot_wer += wer(real_out.split(), pred_out.split())
-                        tot_cer += wer(list(real_out), list(pred_out))
+                        best_wer = 0.0
+                        best_cer = 0.0
+                        for j in range(best_n_inference):
+                            real_out = ''.join([vocab[l] for l in out[i, :out_len[i] - 1]])
+                            pred_out = ''.join([vocab[l] for l in pred[i, :, j]])
+                            pred_out = pred_out.split('<')[0]
+                            best_wer = max(best_wer, wer(real_out.split(), pred_out.split()))
+                            best_cer = max(best_cer, wer(list(real_out), list(pred_out)))
+                        tot_wer += best_wer
+                        tot_cer += best_cer
             summary = tf.Summary(value=
                 [tf.Summary.Value(tag="WER_valid", simple_value=tot_wer / tot_ev),
                  tf.Summary.Value(tag="CER_valid", simple_value=tot_cer / tot_ev),
@@ -92,7 +98,9 @@ def train(
         display_step,
         data_dir,
         job_dir,
-        checkpoint_path):
+        checkpoint_path,
+        length_penalty_weight,
+        best_n_inference):
 
     vocab = np.asarray(
             list(" '+-.ABCDEFGHIJKLMNOPQRSTUVWXYZ_") + ['<GO>', '<EOS>'])
@@ -136,7 +144,8 @@ def train(
                 vocab_to_int,
                 tf.shape(input_lengths)[0],
                 beam_width,
-                learning_rate_tensor)
+                learning_rate_tensor,
+                length_penalty_weight)
 
         writer = tf.summary.FileWriter(job_dir)
         saver = tf.train.Saver()
@@ -185,7 +194,7 @@ def train(
                                     [predictions, outputs, output_lengths],
                                     feed_dict={keep_prob_tensor: 1.0})
                             for i in range(pred.shape[0]):
-                                real_out = ''.join([vocab[l] for l in out[i, :out_len[i] - 1]])
+                                real_out = ''.join([vocab[l] for l in out[i, :out_len[i] - 1, 0]])
                                 pred_out = ''.join([vocab[l] for l in pred[i, :]])
                                 pred_out = pred_out.split('<')[0]
                                 tot_wer += wer(real_out.split(), pred_out.split())
@@ -212,7 +221,8 @@ def train(
                         sess, checkpoint, step)
                 run_eval(graph, job_dir, checkpoint_path, queue, predictions, data_dir,
                         nfilt, vocab_to_int, sess, coord, outputs,
-                        output_lengths, vocab, batch_i, cost, keep_prob_tensor)
+                        output_lengths, vocab, batch_i, cost, keep_prob_tensor,
+                        best_n_inference)
                 coord.request_stop()
 
 if __name__ == "__main__":
@@ -233,5 +243,7 @@ if __name__ == "__main__":
     parser.add_argument("--data-dir", default='gs://wsj-data/wsj0/')
     parser.add_argument("--job-dir", default='./job/')
     parser.add_argument("--checkpoint-path", default=None)
+    parser.add_argument("--length-penalty-weight", default=0.0, type=float)
+    parser.add_argument("--best-n-inference", default=1, type=int)
     args = parser.parse_args()
     train(**args.__dict__)

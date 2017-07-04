@@ -106,7 +106,8 @@ def inference_decoding_layer(
         rnn_size,
         enc_output,
         input_lengths,
-        dec_cell):
+        dec_cell,
+        length_penalty_weight):
     enc_output = tf.contrib.seq2seq.tile_batch(
             enc_output,
             beam_width)
@@ -165,7 +166,8 @@ def seq2seq_model(
         vocab_to_int,
         batch_size,
         beam_width,
-        learning_rate):
+        learning_rate,
+        length_penalty_weight):
 
     enc_output, enc_state, enc_lengths = encoding_layer(
             rnn_size,
@@ -212,14 +214,15 @@ def seq2seq_model(
                 rnn_size,
                 enc_output,
                 enc_lengths,
-                dec_cell)
+                dec_cell,
+                length_penalty_weight)
 
     # Create tensors for the training logits and predictions
     training_logits = tf.identity(
             training_logits.rnn_output,
             name='logits')
     predictions = tf.identity(
-            predictions.predicted_ids[:, :, 0],
+            predictions.predicted_ids,
             name='predictions')
 
     # Create the weights for sequence_loss
