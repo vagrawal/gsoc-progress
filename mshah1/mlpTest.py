@@ -1,11 +1,12 @@
 import os
-CUDA_VISIBLE_DEVICES = '0,1,2,3'
+CUDA_VISIBLE_DEVICES = '3'
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
-from keras.models import Sequential
+from keras.models import Sequential, Model
 from keras.optimizers import SGD,Adagrad
 from keras.layers.normalization import BatchNormalization
-from keras.layers import Input, Dense, Activation, Dropout, Conv1D, MaxPooling1D, Reshape, Flatten
-from keras.layers.merge import add
+from keras.layers import Input, Dense, Activation, Dropout, Conv1D, Conv2D, MaxPooling2D, Reshape, Flatten
+from keras.layers.core import Lambda
+from keras.layers.merge import add, concatenate
 from keras.utils import to_categorical, plot_model
 from keras.models import load_model, Model
 from keras.callbacks import History,ModelCheckpoint,EarlyStopping
@@ -20,11 +21,54 @@ from sklearn.preprocessing import StandardScaler
 from guppy import hpy
 import threading
 import struct
-from multi_gpu import make_parallel
+# from multi_gpu import make_parallel
 # import matplotlib as mpl
 # print mpl.matplotlib_fname()
 # mpl.rcParams['backend'] = 'agg'
 # plt = mpl.pyplot
+
+def get_slice(data, idx, parts):
+        shape = tf.shape(data)
+        size = tf.concat([ shape[:1] // parts, shape[1:] ],axis=0)
+        stride = tf.concat([ shape[:1] // parts, shape[1:]*0 ],axis=0)
+        start = stride * idx
+        return tf.slice(data, start, size)
+
+def make_parallel(model, gpu_count):
+    outputs_all = []
+    for i in range(len(model.outputs)):
+        outputs_all.append([])
+
+    #Place a copy of the model on each GPU, each getting a slice of the batch
+    for i in range(gpu_count):
+        with tf.device('/gpu:%d' % i):
+            with tf.name_scope('tower_%d' % i) as scope:
+
+                inputs = []
+                #Slice each input into a piece for processing on this GPU
+                for x in model.inputs:
+                    input_shape = tuple(x.get_shape().as_list())[1:]
+                    slice_n = Lambda(get_slice, output_shape=input_shape, arguments={'idx':i,'parts':gpu_count})(x)
+                    inputs.append(slice_n)                
+
+                outputs = model(inputs)
+                
+                if not isinstance(outputs, list):
+                    outputs = [outputs]
+                
+                #Save all the outputs for merging back together later
+                for l in range(len(outputs)):
+                    outputs_all[l].append(outputs[l])
+
+    # merge outputs on CPU
+    with tf.device('/cpu:0'):
+        merged = []
+        for outputs in outputs_all:
+            merged.append(concatenate(outputs, axis=0))
+            
+        return Model(input=model.inputs, output=merged)
+
+
 def mlp1(input_dim,output_dim,depth,width,dropout=False,BN=False):
 	model = Sequential()
 	model.add(Dense(width, activation='sigmoid', input_dim=input_dim))
@@ -38,7 +82,7 @@ def mlp1(input_dim,output_dim,depth,width,dropout=False,BN=False):
 			model.add(BatchNormalization())
 	model.add(Dense(output_dim, activation='softmax'))
 	opt = Adagrad(lr=1/(np.sqrt(input_dim) * np.sqrt(width)))
-	model.compile(optimizer='adagrad',
+	model.compile(optimizer=opt,
 	              loss='categorical_crossentropy',
 	              metrics=['accuracy'])
 	return model
@@ -86,29 +130,37 @@ def make_dense_res_block(inp, size, width, drop=False,BN=False):
 		x = Dense(width)(x)
 		if drop:
 			x = Dropout(0.25)(x)
-		if BN:
+		if BN and i < size - 1:
 			x = _bn_relu(x)
 	return x
 
-def mlp4(input_dim,output_dim,nBlocks,width, block_width=None, drop=False, BN=False):
+def mlp4(input_dim,output_dim,nBlocks,width, 
+			block_width=None, drop=False, BN=False, 
+			parallelize=False, conv=False):
 	if block_width == None:
 		block_width = width
 	inp = Input(shape=(input_dim,))
-	# x = Reshape((input_dim,9))(inp)
-	# x = Conv1D(64,4,padding='same',activation='relu')(x)
-	# x = MaxPooling1D(3,padding='same')(x)
-	# x = Flatten()(x)
-	x = Dense(width)(inp)
+	if conv:
+		x = Reshape((9,input_dim/9,1))(inp)
+		x = Conv2D(64,(4,4),padding='valid',activation='relu')(x)
+		x = MaxPooling2D(3,padding='valid')(x)
+		x = Flatten()(x)
+		x = Dense(width)(x)
+	else:
+		x = Dense(width)(inp)
 	if BN:
 		x = _bn_relu(x)
 	for i in range(nBlocks):
-		y = make_dense_res_block(x,3,block_width,BN=BN,drop=drop)
+		y = make_dense_res_block(x,2,block_width,BN=BN,drop=drop)
 		if block_width != width:
 			y = Dense(width)(x)
 		x = add([x,y])
+		if BN:
+			x = _bn_relu(x)
 	z = Dense(output_dim, activation='softmax')(x)
 	model = Model(inputs=inp, outputs=z)
-	model = make_parallel(model, len(CUDA_VISIBLE_DEVICES.split(',')))
+	if parallelize:
+		model = make_parallel(model, len(CUDA_VISIBLE_DEVICES.split(',')))
 	opt = Adagrad(lr=1/(np.sqrt(input_dim * width)))
 	# opt = SGD(lr=1/(np.sqrt(input_dim * width)), decay=1e-6, momentum=0.9, nesterov=True)
 	model.compile(optimizer=opt,
@@ -116,29 +168,29 @@ def mlp4(input_dim,output_dim,nBlocks,width, block_width=None, drop=False, BN=Fa
 	              metrics=['accuracy'])
 	return model
 
-def DBN_DNN(inp,nClasses,depth,width):
+def DBN_DNN(inp,nClasses,depth,width,batch_size=2048):
 	RBMs = []
 	weights = []
 	bias = []
-	batch_size = 500000
-	nEpoches = 1
+	# batch_size = inp.shape
+	nEpoches = 75
 	n_batches = (inp.shape[0] / batch_size) + (1 if inp.shape[0]%batch_size != 0 else 0)
 
 	sigma = np.std(inp)
 	# sigma = 1
-	rbm = GBRBM(n_visible=inp.shape[1],n_hidden=width,learning_rate=0.01, momentum=0.95, use_tqdm=True,sample_visible=True,sigma=sigma)
-	rbm.fit(inp,n_epoches=5,batch_size=2048,shuffle=False)
+	rbm = GBRBM(n_visible=inp.shape[1],n_hidden=width,learning_rate=0.002, momentum=0.90, use_tqdm=True,sample_visible=True,sigma=sigma)
+	rbm.fit(inp,n_epoches=225,batch_size=batch_size,shuffle=True)
 	RBMs.append(rbm)
 	for i in range(depth - 1):
 		print 'training DBN layer', i
-		rbm = BBRBM(n_visible=width,n_hidden=width,learning_rate=0.01, momentum=0.95, use_tqdm=True)
+		rbm = BBRBM(n_visible=width,n_hidden=width,learning_rate=0.02, momentum=0.90, use_tqdm=True)
 		for e in range(nEpoches):
 			for j in range(n_batches):
 				print "\r%d batch no %d/%d epoch no %d/%d" % (int(time.time()),j+1,n_batches,e,nEpoches)
 				b = np.array(inp[j*batch_size:min((j+1)*batch_size, inp.shape[0])])
 				for r in RBMs:
 					b = r.transform(b)
-				rbm.fit(b,n_epoches=1,batch_size=2048)
+				rbm.partial_fit(b)
 		RBMs.append(rbm)
 	for r in RBMs:
 		(W,_,Bh) = r.get_weights()
@@ -238,16 +290,16 @@ def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],train_layer_0=F
 	              loss='categorical_crossentropy',
 	              metrics=['accuracy'])
 		print model_new.summary()
-		# model_new.fit(x_train,y_train,epochs=3,batch_size=2048)
-		model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
-										steps_per_epoch=len(meta['framePos_Train']), epochs=3,
-										callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,monitor='loss',mode='min')])
+		model_new.fit(x_train,y_train,epochs=1,batch_size=256)
+		# model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
+		# 								steps_per_epoch=len(meta['framePos_Train']), epochs=3,
+		# 								callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,monitor='loss',mode='min')])
 		model.layers[i].set_weights(model_new.layers[-2].get_weights())
 	for l in model.layers:
 		l.trainable = True
 	return model
 
-def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,plot_name,testOnly=False,pretrain=False):
+def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,plot_name,testOnly=False,pretrain=False,init_epoch=0):
 
 	# model = mlp4(20, 132,2,2048)
 	# print model.summary()
@@ -301,14 +353,15 @@ def writeSenScores(filename,scores):
 version 0.1
 mdef_file ../../wsj_all_cd30.mllt_cd_cont_4000//mdef
 n_sen 132
-logbase 1.000700
+logbase 1.000100
 endhdr
 """
 	s += struct.pack('l',0x11223344)
-	scores = np.log(scores)/np.log(1.0007)
+	scores = np.log(scores)/np.log(1.0001)
 	truncateToShort = lambda x: 32676 if x > 32767 else (-32768 if x < -32768 else x)
 	vf = np.vectorize(truncateToShort)
 	scores = vf(scores)
+	scores -= np.max(scores)
 	for r in scores:
 		s += struct.pack('h',n_active)
 		r_str = struct.pack('%sh' % len(r), *r)
@@ -349,35 +402,37 @@ def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,context_len=4):
 			os.makedirs(dirname)
 		writeSenScores(res_file_path,preds)
 
-print 'loading data...'
-meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
-x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
-y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
-end = x_train.shape[0] % 2048
-x_train = x_train[:-end]
-y_train = y_train[:-end]
-nClasses = 132
-print 'transforming labels...'
-y_train = to_categorical(y_train, num_classes = nClasses)
+# print 'loading data...'
+# meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
+# x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
+# y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
+# # end = x_train.shape[0] % 2048
+# # x_train = x_train[:-end]
+# # y_train = y_train[:-end]
+# nClasses = 138
+# print nClasses
+# print 'transforming labels...'
+# y_train = to_categorical(y_train, num_classes = nClasses)
 
-print 'loading test data...'
-x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
-y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
-end = x_test.shape[0] % 2048
-x_test = x_test[:-end]
-y_test = y_test[:-end]
-# x_test = x_train
-# y_test = y_train
-print 'transforming labels...'
-y_test = to_categorical(y_test, num_classes = nClasses)
+# print 'loading test data...'
+# x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
+# y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
+# # end = x_test.shape[0] % 2048
+# # x_test = x_test[:-end]
+# # y_test = y_test[:-end]
+# # x_test = x_train
+# # y_test = y_train
+# print 'transforming labels...'
+# y_test = to_categorical(y_test, num_classes = nClasses)
 
-print 'initializing model...'
-model = mlp4(x_train.shape[1], nClasses,17,2048,BN=True)
-# model = DBN_DNN(x_train, nClasses,3,2048)
-trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-20x2048-relu-adagrad','mlp4-20x2048-relu-adagrad',pretrain=False)
+# print 'initializing model...'
+# model = mlp1(x_train.shape[1], nClasses,2,2048,BN=True)
+# # model = load_model('test_CP.h5')
+# # model = DBN_DNN(x_train, nClasses,3,2048)
+# trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp1-3x2048-sig-adagrad-BN','mlp1-3x2048-sig-adagrad-BN',pretrain=True)
 
-# model = load_model('mlp1-3x2048-sig-adagrad-drop-BN.h5')
-# getPreds(model,'/home/mshah1/wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_mls/','.mls','/home/mshah1/wsj/wsj0/senscores/','.sen')
+model = load_model('mlp1-3x2048-sig-adagrad-BN_CP.h5')
+getPreds(model,'SI_ET_20.NDX','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores/','.sen')
 # pred = model.predict(x_test[:meta['framePos_Dev'][0] - meta['framePos_Train'][-1]],verbose=1)
 # writeSenScores('senScores',pred)
 # np.save('pred.npy',pred)

@@ -1,7 +1,7 @@
 from keras.layers.merge import concatenate
 from keras.layers.core import Lambda
 from keras.models import Model
-
+ 
 import tensorflow as tf
 
 def make_parallel(model, gpu_count):
