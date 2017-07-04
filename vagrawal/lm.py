@@ -25,8 +25,6 @@ def training_decoding_layer(
         data,
         lengths,
         vocab_size,
-        enc_output,
-        input_lengths,
         batch_size,
         start_token):
 
@@ -59,42 +57,41 @@ def language_model(
         batch_size,
         learning_rate):
 
-      # Create the weights for sequence_loss
-    masks = tf.sequence_mask(
-            lengths,
-            tf.reduce_max(output_lengths),
-            dtype=tf.float32,
-            name='lm_masks')
+    with tf.name_scope("lm"):
 
-    training_logits = training_decoding_layer(
-            data,
-            lengths,
-            vocab_size,
-            enc_output,
-            input_lengths,
-            batch_size,
-            vocab_to_int['<GO>'])
+        # Create the weights for sequence_loss
+        masks = tf.sequence_mask(
+                lengths,
+                tf.reduce_max(output_lengths),
+                dtype=tf.float32,
+                name='lm_masks')
 
-    with tf.name_scope("lm_optimization"):
-        # Loss function
-        cost = tf.contrib.seq2seq.sequence_loss(
-            training_logits,
-            output_data,
-            masks)
+        training_logits = training_decoding_layer(
+                data,
+                lengths,
+                vocab_size,
+                batch_size,
+                vocab_to_int['<GO>'])
 
-        tf.summary.scalar('cost', cost)
+        with tf.name_scope("optimization"):
+            # Loss function
+            cost = tf.contrib.seq2seq.sequence_loss(
+                training_logits,
+                output_data,
+                masks)
 
-        step = tf.contrib.framework.get_or_create_global_step()
+            tf.summary.scalar('cost', cost)
 
-        # Optimizer
-        optimizer = tf.train.AdamOptimizer(learning_rate)
+            step = tf.contrib.framework.get_or_create_global_step()
 
-        # Gradient Clipping
-        gradients = optimizer.compute_gradients(cost)
-        capped_gradients = [(
-            tf.clip_by_value(grad, -5., 5.), var)
-            for grad, var in gradients if grad is not None]
-        train_op = optimizer.apply_gradients(capped_gradients, step)
+            # Optimizer
+            optimizer = tf.train.AdamOptimizer(learning_rate)
 
-    return training_logits, predictions, train_op, cost, step
+            # Gradient Clipping
+            gradients = optimizer.compute_gradients(cost)
+            capped_gradients = [(
+                tf.clip_by_value(grad, -5., 5.), var)
+                for grad, var in gradients if grad is not None]
+            train_op = optimizer.apply_gradients(capped_gradients, step)
 
+    return training_logits, train_op, cost, step
