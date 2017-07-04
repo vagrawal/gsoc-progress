@@ -179,7 +179,7 @@ def DBN_DNN(inp,nClasses,depth,width,batch_size=2048):
 	sigma = np.std(inp)
 	# sigma = 1
 	rbm = GBRBM(n_visible=inp.shape[1],n_hidden=width,learning_rate=0.002, momentum=0.90, use_tqdm=True,sample_visible=True,sigma=sigma)
-	rbm.fit(inp,n_epoches=225,batch_size=batch_size,shuffle=True)
+	rbm.fit(inp,n_epoches=100,batch_size=batch_size,shuffle=True)
 	RBMs.append(rbm)
 	for i in range(depth - 1):
 		print 'training DBN layer', i
@@ -351,17 +351,18 @@ def writeSenScores(filename,scores):
 	n_active = scores.shape[1]
 	s = """s3
 version 0.1
-mdef_file ../../wsj_all_cd30.mllt_cd_cont_4000//mdef
-n_sen 132
-logbase 1.000100
+mdef_file ../../en_us.ci_cont/mdef
+n_sen 138
+logbase 1.000300
 endhdr
 """
 	s += struct.pack('l',0x11223344)
-	scores = np.log(scores)/np.log(1.0001)
+	scores = np.log(scores)/np.log(1.0003)
 	truncateToShort = lambda x: 32676 if x > 32767 else (-32768 if x < -32768 else x)
 	vf = np.vectorize(truncateToShort)
 	scores = vf(scores)
 	scores -= np.max(scores)
+	scores /= np.sum(scores)
 	for r in scores:
 		s += struct.pack('h',n_active)
 		r_str = struct.pack('%sh' % len(r), *r)
@@ -374,13 +375,17 @@ def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,context_len=4):
 	with open(filelist) as f:
 		files = f.readlines()
 		files = map(lambda x: x.strip(),files)
-	filepaths = map(lambda x: file_dir+x+file_ext,files)[:500]
+	filepaths = map(lambda x: file_dir+x+file_ext,files)
 	scaler = StandardScaler(copy=False,with_std=False)
 	for i in range(len(filepaths)):
 		stdout.write("\r%d/%d 	" % (i,len(filepaths)))
 		stdout.flush()
 
 		f = filepaths[i]
+
+		if not os.path.exists(f):
+			print "\n",f
+			continue
 		data = np.loadtxt(f)
 		data = scaler.fit_transform(data)
 
@@ -402,37 +407,37 @@ def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,context_len=4):
 			os.makedirs(dirname)
 		writeSenScores(res_file_path,preds)
 
-# print 'loading data...'
-# meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
-# x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
-# y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
-# # end = x_train.shape[0] % 2048
-# # x_train = x_train[:-end]
-# # y_train = y_train[:-end]
-# nClasses = 138
-# print nClasses
-# print 'transforming labels...'
-# y_train = to_categorical(y_train, num_classes = nClasses)
+print 'loading data...'
+meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
+x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
+y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
+# end = x_train.shape[0] % 2048
+# x_train = x_train[:-end]
+# y_train = y_train[:-end]
+nClasses = 138
+print nClasses
+print 'transforming labels...'
+y_train = to_categorical(y_train, num_classes = nClasses)
 
-# print 'loading test data...'
-# x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
-# y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
+print 'loading test data...'
+x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
+y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
 # # end = x_test.shape[0] % 2048
 # # x_test = x_test[:-end]
 # # y_test = y_test[:-end]
 # # x_test = x_train
 # # y_test = y_train
-# print 'transforming labels...'
-# y_test = to_categorical(y_test, num_classes = nClasses)
+print 'transforming labels...'
+y_test = to_categorical(y_test, num_classes = nClasses)
 
-# print 'initializing model...'
+print 'initializing model...'
 # model = mlp1(x_train.shape[1], nClasses,2,2048,BN=True)
-# # model = load_model('test_CP.h5')
-# # model = DBN_DNN(x_train, nClasses,3,2048)
-# trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp1-3x2048-sig-adagrad-BN','mlp1-3x2048-sig-adagrad-BN',pretrain=True)
+# model = load_model('test_CP.h5')
+model = DBN_DNN(x_train, nClasses,3,2048)
+trainNtest(model,x_train,y_train,x_test,y_test,meta,'dbn-3x2048-sig-adagrad','dbn-3x2048-sig-adagrad')
 
-model = load_model('mlp1-3x2048-sig-adagrad-BN_CP.h5')
-getPreds(model,'SI_ET_20.NDX','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores/','.sen')
+# model = load_model('mlp1-3x2048-sig-adagrad-BN_CP.h5')
+# getPreds(model,'SI_ET_20.NDX','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores/','.sen')
 # pred = model.predict(x_test[:meta['framePos_Dev'][0] - meta['framePos_Train'][-1]],verbose=1)
 # writeSenScores('senScores',pred)
 # np.save('pred.npy',pred)
