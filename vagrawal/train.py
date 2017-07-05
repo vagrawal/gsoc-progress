@@ -34,7 +34,7 @@ def wer(r, h):
 def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, nfilt,
         vocab_to_int, sess, coord, outputs, output_lengths, vocab,
         batch_i, cost, keep_prob_tensor, mean_speaker, var_speaker,
-        bestr_n_inference):
+        best_n_inference, pred_scores):
 
     tf.logging.info("Evaluation started")
     with graph.as_default():
@@ -56,23 +56,27 @@ def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, nfilt,
 
             with coord.stop_on_exception():
                 while not coord.should_stop():
-                    pred, out, out_len, loss = sess.run(
-                            [predictions, outputs, output_lengths, cost],
+                    pred, sc, out, out_len, loss = sess.run(
+                            [predictions, pred_scores, outputs, output_lengths, cost],
                             feed_dict={keep_prob_tensor: 1.0})
                     tot_ev += pred.shape[0]
                     tot_bat += 1
                     batch_loss += loss
                     for i in range(pred.shape[0]):
-                        best_wer = 0.0
-                        best_cer = 0.0
+                        best_wer = 100.0
+                        best_cer = 100.0
                         for j in range(best_n_inference):
                             real_out = ''.join([vocab[l] for l in out[i, :out_len[i] - 1]])
                             pred_out = ''.join([vocab[l] for l in pred[i, :, j]])
                             pred_out = pred_out.split('<')[0]
-                            best_wer = max(best_wer, wer(real_out.split(), pred_out.split()))
-                            best_cer = max(best_cer, wer(list(real_out), list(pred_out)))
+                            cur_wer = wer(real_out.split(), pred_out.split())
+                            tf.logging.info("{} : {}".format(pred_out, sc[i, j]))
+                            best_wer = min(best_wer, cur_wer)
+                            best_cer = min(best_cer, wer(list(real_out), list(pred_out)))
                         tot_wer += best_wer
                         tot_cer += best_cer
+
+            tf.logging.info('WER: {}, CER: {}'.format(tot_wer / tot_ev, tot_cer / tot_ev))
             summary = tf.Summary(value=
                 [tf.Summary.Value(tag="WER_valid", simple_value=tot_wer / tot_ev),
                  tf.Summary.Value(tag="CER_valid", simple_value=tot_cer / tot_ev),
@@ -99,8 +103,8 @@ def train(
         data_dir,
         job_dir,
         checkpoint_path,
-        length_penalty_weight,
-        best_n_inference):
+        best_n_inference,
+        eval_only):
 
     vocab = np.asarray(
             list(" '+-.ABCDEFGHIJKLMNOPQRSTUVWXYZ_") + ['<GO>', '<EOS>'])
@@ -111,8 +115,11 @@ def train(
 
     checkpoint = job_dir + 'checkpoints/'
 
-    mean_speaker, var_speaker = get_speaker_stats(data_dir, nfilt,
-            ['si_et_05', 'si_tr_s'])
+    if eval_only:
+        sets = ['si_et_05']
+    else:
+        sets = ['si_et_05', 'si_tr_s']
+    mean_speaker, var_speaker = get_speaker_stats(data_dir, nfilt, sets)
 
     graph = tf.Graph()
     with graph.as_default():
@@ -131,7 +138,7 @@ def train(
                 name='feed_queue')
             inputs, input_lengths, outputs, output_lengths = queue.dequeue_many(batch_size)
 
-        training_logits, predictions, train_op, cost, step = seq2seq_model(
+        training_logits, predictions, train_op, cost, step, pred_scores = seq2seq_model(
                 inputs,
                 outputs,
                 keep_prob_tensor,
@@ -144,8 +151,7 @@ def train(
                 vocab_to_int,
                 tf.shape(input_lengths)[0],
                 beam_width,
-                learning_rate_tensor,
-                length_penalty_weight)
+                learning_rate_tensor)
 
         writer = tf.summary.FileWriter(job_dir)
         saver = tf.train.Saver()
@@ -154,15 +160,23 @@ def train(
         for epoch_i in range(1, num_epochs + 1):
             tf.Session.reset(None, ['queue'])
             with tf.Session() as sess:
+                coord = tf.train.Coordinator(
+                        clean_stop_exception_types=(
+                            tf.errors.CancelledError,
+                            tf.errors.OutOfRangeError))
                 if (checkpoint_path is None):
                     sess.run(tf.global_variables_initializer())
                     sess.run(tf.local_variables_initializer())
                 else:
                     saver.restore(sess, checkpoint_path)
-                coord = tf.train.Coordinator(
-                        clean_stop_exception_types=(
-                            tf.errors.CancelledError,
-                            tf.errors.OutOfRangeError))
+                    batch_i = sess.run(step)
+                    run_eval(graph, job_dir, checkpoint_path, queue, predictions, data_dir,
+                            nfilt, vocab_to_int, sess, coord, outputs,
+                            output_lengths, vocab, batch_i, cost, keep_prob_tensor,
+                            mean_speaker, var_speaker, best_n_inference, pred_scores)
+                    if (eval_only):
+                        coord.request_stop()
+                        return
 
                 read_data_queue('si_tr_s', queue, data_dir, nfilt,
                         vocab_to_int, sess, mean_speaker, var_speaker)
@@ -219,10 +233,7 @@ def train(
                 tf.logging.info("Epoch completed, saving")
                 checkpoint_path = saver.save(
                         sess, checkpoint, step)
-                run_eval(graph, job_dir, checkpoint_path, queue, predictions, data_dir,
-                        nfilt, vocab_to_int, sess, coord, outputs,
-                        output_lengths, vocab, batch_i, cost, keep_prob_tensor,
-                        best_n_inference)
+
                 coord.request_stop()
 
 if __name__ == "__main__":
@@ -243,7 +254,7 @@ if __name__ == "__main__":
     parser.add_argument("--data-dir", default='gs://wsj-data/wsj0/')
     parser.add_argument("--job-dir", default='./job/')
     parser.add_argument("--checkpoint-path", default=None)
-    parser.add_argument("--length-penalty-weight", default=0.0, type=float)
     parser.add_argument("--best-n-inference", default=1, type=int)
+    parser.add_argument("--eval-only", default=False, type=bool)
     args = parser.parse_args()
     train(**args.__dict__)

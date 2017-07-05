@@ -83,3 +83,20 @@ Made progress in language model. The model is still not working. I think I will 
 Get away with self made LM. And add penalization in beam search.
 
 Use best of best n in evaluation.
+
+# 5 July
+
+Modify the lm evaluation code in sphinxbase so that it scores every line in file.
+
+Dump all the outputs and scores in evaluation for further processing. Also make eval only mode.
+
+Removed the penalization part from tensorflow as this was not what we wanted, and I will just rely on custom code for dumped outputs.
+
+Some results:
+
+Beam width 10, Best of 1: WER: 29.9762102737, CER: 11.5430441109
+Beam width 10, Best of 10: WER: 25.0155631528, CER: 9.39780356101
+Beam width 34, Best of 1: WER: 32.4193209151, CER: 14.9511835159
+Beam width 34, Best of 10: WER: 25.1306455237, CER: 9.8869262826
+
+I have the dumps and the code to find LM score. Only problem is what to do with OOV words. And then I can do grid search to choose the parameters.
