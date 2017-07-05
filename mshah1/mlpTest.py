@@ -1,5 +1,5 @@
 import os
-CUDA_VISIBLE_DEVICES = '3'
+CUDA_VISIBLE_DEVICES = '2'
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 from keras.models import Sequential, Model
 from keras.optimizers import SGD,Adagrad
@@ -26,48 +26,6 @@ import struct
 # print mpl.matplotlib_fname()
 # mpl.rcParams['backend'] = 'agg'
 # plt = mpl.pyplot
-
-def get_slice(data, idx, parts):
-        shape = tf.shape(data)
-        size = tf.concat([ shape[:1] // parts, shape[1:] ],axis=0)
-        stride = tf.concat([ shape[:1] // parts, shape[1:]*0 ],axis=0)
-        start = stride * idx
-        return tf.slice(data, start, size)
-
-def make_parallel(model, gpu_count):
-    outputs_all = []
-    for i in range(len(model.outputs)):
-        outputs_all.append([])
-
-    #Place a copy of the model on each GPU, each getting a slice of the batch
-    for i in range(gpu_count):
-        with tf.device('/gpu:%d' % i):
-            with tf.name_scope('tower_%d' % i) as scope:
-
-                inputs = []
-                #Slice each input into a piece for processing on this GPU
-                for x in model.inputs:
-                    input_shape = tuple(x.get_shape().as_list())[1:]
-                    slice_n = Lambda(get_slice, output_shape=input_shape, arguments={'idx':i,'parts':gpu_count})(x)
-                    inputs.append(slice_n)                
-
-                outputs = model(inputs)
-                
-                if not isinstance(outputs, list):
-                    outputs = [outputs]
-                
-                #Save all the outputs for merging back together later
-                for l in range(len(outputs)):
-                    outputs_all[l].append(outputs[l])
-
-    # merge outputs on CPU
-    with tf.device('/cpu:0'):
-        merged = []
-        for outputs in outputs_all:
-            merged.append(concatenate(outputs, axis=0))
-            
-        return Model(input=model.inputs, output=merged)
-
 
 def mlp1(input_dim,output_dim,depth,width,dropout=False,BN=False):
 	model = Sequential()
@@ -349,20 +307,23 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,plot_name,test
 
 def writeSenScores(filename,scores):
 	n_active = scores.shape[1]
+	s = ''
 	s = """s3
 version 0.1
 mdef_file ../../en_us.ci_cont/mdef
 n_sen 138
-logbase 1.000300
+logbase 1.000100
 endhdr
 """
 	s += struct.pack('l',0x11223344)
-	scores = np.log(scores)/np.log(1.0003)
+	scores = np.log(scores)/np.log(1.0001)
+	scores *= 0.0007
 	truncateToShort = lambda x: 32676 if x > 32767 else (-32768 if x < -32768 else x)
 	vf = np.vectorize(truncateToShort)
 	scores = vf(scores)
-	scores -= np.max(scores)
-	scores /= np.sum(scores)
+	# scores -= np.max(scores)
+	# scores /= np.sum(scores,axis=0)
+	# print scores, np.max(scores)
 	for r in scores:
 		s += struct.pack('h',n_active)
 		r_str = struct.pack('%sh' % len(r), *r)
@@ -409,35 +370,60 @@ def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,context_len=4):
 
 print 'loading data...'
 meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
-x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
-y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
-# end = x_train.shape[0] % 2048
-# x_train = x_train[:-end]
-# y_train = y_train[:-end]
-nClasses = 138
-print nClasses
-print 'transforming labels...'
-y_train = to_categorical(y_train, num_classes = nClasses)
+# x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
+# y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
+# # end = x_train.shape[0] % 2048
+# # x_train = x_train[:-end]
+# # y_train = y_train[:-end]
+# nClasses = 138
+# print nClasses
+# print 'transforming labels...'
+# y_train = to_categorical(y_train, num_classes = nClasses)
 
 print 'loading test data...'
 x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
-y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
-# # end = x_test.shape[0] % 2048
-# # x_test = x_test[:-end]
-# # y_test = y_test[:-end]
-# # x_test = x_train
-# # y_test = y_train
-print 'transforming labels...'
-y_test = to_categorical(y_test, num_classes = nClasses)
+# y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
+# # # end = x_test.shape[0] % 2048
+# # # x_test = x_test[:-end]
+# # # y_test = y_test[:-end]
+# # # x_test = x_train
+# # # y_test = y_train
+# print 'transforming labels...'
+# y_test = to_categorical(y_test, num_classes = nClasses)
 
-print 'initializing model...'
-# model = mlp1(x_train.shape[1], nClasses,2,2048,BN=True)
-# model = load_model('test_CP.h5')
-model = DBN_DNN(x_train, nClasses,3,2048)
-trainNtest(model,x_train,y_train,x_test,y_test,meta,'dbn-3x2048-sig-adagrad','dbn-3x2048-sig-adagrad')
+# print 'initializing model...'
+# # model = mlp1(x_train.shape[1], nClasses,2,2048,BN=True)
+# # model = load_model('test_CP.h5')
+# model = DBN_DNN(x_train, nClasses,3,2048)
+# trainNtest(model,x_train,y_train,x_test,y_test,meta,'dbn-3x2048-sig-adagrad','dbn-3x2048-sig-adagrad')
 
-# model = load_model('mlp1-3x2048-sig-adagrad-BN_CP.h5')
-# getPreds(model,'SI_ET_20.NDX','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores/','.sen')
-# pred = model.predict(x_test[:meta['framePos_Dev'][0] - meta['framePos_Train'][-1]],verbose=1)
+# data = np.loadtxt('1.csv',delimiter=',')
+# x_train = data[:,[0,1]]
+# y_train = data[:,[2]]
+
+# model = Sequential()
+# model.add(Dense(6,activation='sigmoid',input_dim=2))
+# model.add(Dense(1))
+# model.compile(optimizer='sgd',
+# 				loss='mean_squared_error',
+# 				metrics=['accuracy'])
+# model.fit(x_train,y_train,epochs=1,batch_size=256)
+# res = model.predict(x_train) 
+# print res, y_train
+# res = map(lambda x: 1 if x>= 0.5 else 0,res)
+# mydata = np.loadtxt('1.csv',delimiter=',')
+# mydata[:,2] = res
+# mydata_1 = mydata[np.where(mydata[:,2] == 1)][:,0:2]
+# mydata_0 = mydata[np.where(mydata[:,2] == 0)][:,0:2]
+
+
+# plt.scatter(mydata_1[:,0], mydata_1[:,1],color='r')
+# plt.scatter(mydata_0[:,0], mydata_0[:,1],color='b')
+# plt.savefig('mounira_test.png')
+
+
+model = load_model('mlp1-3x2048-sig-adagrad-BN_CP.h5')
+getPreds(model,'SI_ET_20.NDX','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores/','.sen')
+# pred = model.predict(x_test[:meta['framePos_Dev'][0]],verbose=1)
 # writeSenScores('senScores',pred)
 # np.save('pred.npy',pred)
