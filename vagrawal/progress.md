@@ -100,3 +100,7 @@ Beam width 34, Best of 1: WER: 32.4193209151, CER: 14.9511835159
 Beam width 34, Best of 10: WER: 25.1306455237, CER: 9.8869262826
 
 I have the dumps and the code to find LM score. Only problem is what to do with OOV words. And then I can do grid search to choose the parameters.
+
+# 6 July
+
+I did some more experiments for offline LM, but it seems an online LM needs to be built eventually for any respectable results. I have looked into few codes, and I think OpenFST can be used in my code by doing a little work.
