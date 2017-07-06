@@ -1,5 +1,5 @@
 import os
-CUDA_VISIBLE_DEVICES = '2'
+CUDA_VISIBLE_DEVICES = ''
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 from keras.models import Sequential, Model
 from keras.optimizers import SGD,Adagrad
@@ -315,13 +315,14 @@ n_sen 138
 logbase 1.000100
 endhdr
 """
-	s += struct.pack('l',0x11223344)
+	s += struct.pack('I',0x11223344)
 	scores = np.log(scores)/np.log(1.0001)
-	scores *= 0.0007
+	scores -= np.min(scores)
+	scores *= -0.01787411
+	scores += 816.90396927
 	truncateToShort = lambda x: 32676 if x > 32767 else (-32768 if x < -32768 else x)
 	vf = np.vectorize(truncateToShort)
 	scores = vf(scores)
-	# scores -= np.max(scores)
 	# scores /= np.sum(scores,axis=0)
 	# print scores, np.max(scores)
 	for r in scores:
