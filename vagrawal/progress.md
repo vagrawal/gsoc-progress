@@ -104,3 +104,7 @@ I have the dumps and the code to find LM score. Only problem is what to do with 
 # 6 July
 
 I did some more experiments for offline LM, but it seems an online LM needs to be built eventually for any respectable results. I have looked into few codes, and I think OpenFST can be used in my code by doing a little work.
+
+# 7 July
+
+Made quite some progress in LM. Unfortunately, not much to commit. I will very likely make things work by tomorrow.
