@@ -108,3 +108,9 @@ I did some more experiments for offline LM, but it seems an online LM needs to b
 # 7 July
 
 Made quite some progress in LM. Unfortunately, not much to commit. I will very likely make things work by tomorrow.
+
+# 8 July
+
+Made basic skeleton for LM. It is taking so much time to complete this part due to many small things. Tensorflow is causing big problems.  Hopefully I will come up with working model by tomorrow.
+
+I also took quite some time to understand various methods of decoding. If the model uses CTC, I could simply reuse the other tools completely by dumping FST and composing to the grammar and finding best path. In using attention, as the outputs depends on what is commited previously, so I have to use online LM.
