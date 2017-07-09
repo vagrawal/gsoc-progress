@@ -1,6 +1,7 @@
 import tensorflow as tf
 from tensorflow.python.layers.core import Dense
 from tensorflow.python.ops.rnn_cell_impl import _zero_state_tensors
+from lm import LMCellWrapper
 
 def encoding_layer(
         rnn_size,
@@ -46,7 +47,6 @@ def encoding_layer(
 def training_decoding_layer(
         output_data,
         output_lengths,
-        output_layer,
         vocab_size,
         rnn_size,
         enc_output,
@@ -85,8 +85,7 @@ def training_decoding_layer(
     training_decoder = tf.contrib.seq2seq.BasicDecoder(
             dec_cell,
             training_helper,
-            initial_state,
-            output_layer)
+            initial_state)
 
     training_logits, _, _ = tf.contrib.seq2seq.dynamic_decode(
             training_decoder,
@@ -99,7 +98,6 @@ def inference_decoding_layer(
         vocab_size,
         start_token,
         end_token,
-        output_layer,
         max_output_length,
         batch_size,
         beam_width,
@@ -122,6 +120,8 @@ def inference_decoding_layer(
             normalize=False,
             name='BahdanauAttention')
 
+    dec_cell = LMCellWrapper(dec_cell, "../L.fst", 5, False)
+
     dec_cell = tf.contrib.seq2seq.AttentionWrapper(
             dec_cell,
             attn_mech,
@@ -142,8 +142,7 @@ def inference_decoding_layer(
             start_tokens,
             end_token,
             initial_state,
-            beam_width,
-            output_layer)
+            beam_width)
 
     predictions, _, _ = tf.contrib.seq2seq.dynamic_decode(
             inference_decoder,
@@ -175,24 +174,30 @@ def seq2seq_model(
             keep_prob)
 
     with tf.variable_scope('decoder'):
+        # For some reason sharing LSTMCell between first and middle layers is
+        # not working
+        lstm = tf.contrib.rnn.LSTMCell(
+                rnn_size,
+                initializer=tf.random_uniform_initializer(-0.1, 0.1, seed=2))
+        dec_cell_inp = tf.contrib.rnn.DropoutWrapper(
+                lstm,
+                input_keep_prob=keep_prob)
         lstm = tf.contrib.rnn.LSTMCell(
                 rnn_size,
                 initializer=tf.random_uniform_initializer(-0.1, 0.1, seed=2))
         dec_cell = tf.contrib.rnn.DropoutWrapper(
                 lstm,
                 input_keep_prob=keep_prob)
-
-    output_layer = Dense(
-            vocab_size,
-            kernel_initializer = tf.truncated_normal_initializer(
-                mean = 0.0,
-                stddev=0.1))
+        out_cell = tf.contrib.rnn.LSTMCell(
+                vocab_size,
+                initializer=tf.random_uniform_initializer(-0.1, 0.1, seed=2))
+        dec_cell = tf.contrib.rnn.MultiRNNCell(
+                [dec_cell_inp] + [dec_cell] * (num_layers - 1) + [out_cell])
 
     with tf.variable_scope("decode"):
         training_logits = training_decoding_layer(
                 output_data,
                 output_lengths,
-                output_layer,
                 vocab_size,
                 rnn_size,
                 enc_output,
@@ -205,7 +210,6 @@ def seq2seq_model(
                 len(vocab_to_int),
                 vocab_to_int['<GO>'],
                 vocab_to_int['<EOS>'],
-                output_layer,
                 max_output_length,
                 batch_size,
                 beam_width,

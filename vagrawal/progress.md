@@ -114,3 +114,7 @@ Made quite some progress in LM. Unfortunately, not much to commit. I will very l
 Made basic skeleton for LM. It is taking so much time to complete this part due to many small things. Tensorflow is causing big problems.  Hopefully I will come up with working model by tomorrow.
 
 I also took quite some time to understand various methods of decoding. If the model uses CTC, I could simply reuse the other tools completely by dumping FST and composing to the grammar and finding best path. In using attention, as the outputs depends on what is commited previously, so I have to use online LM.
+
+# 9 July
+
+I have many things about to write about the model and implementation, since I am hitting a major checkpoint. Will update tomorrow. I am just commiting my progress in LM for now.
