@@ -56,6 +56,7 @@ def genDataset(DB_path, filelist, feat_path, stseg_path, mdef_fname, context_len
 
 	stseg_files = stseg_files_train + stseg_files_dev + stseg_files_test
 	print "Training Files: %d 	Dev Files: %d	Testing Files: %d" % (len(stseg_files_train), len(stseg_files_dev), len(stseg_files_test))
+	
 	phone2state = read_sen_labels_from_mdef(mdef_fname,onlyPhone=False)
 	
 	X_Train = []

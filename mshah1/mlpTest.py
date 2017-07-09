@@ -1,5 +1,5 @@
 import os
-CUDA_VISIBLE_DEVICES = ''
+CUDA_VISIBLE_DEVICES = '0'
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 from keras.models import Sequential, Model
 from keras.optimizers import SGD,Adagrad
@@ -10,6 +10,7 @@ from keras.layers.merge import add, concatenate
 from keras.utils import to_categorical, plot_model
 from keras.models import load_model, Model
 from keras.callbacks import History,ModelCheckpoint,EarlyStopping
+import keras.backend as K
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -92,7 +93,7 @@ def make_dense_res_block(inp, size, width, drop=False,BN=False):
 			x = _bn_relu(x)
 	return x
 
-def mlp4(input_dim,output_dim,nBlocks,width, 
+def mlp4(input_dim,output_dim,nConv,nBlocks,width, 
 			block_width=None, drop=False, BN=False, 
 			parallelize=False, conv=False):
 	if block_width == None:
@@ -100,8 +101,11 @@ def mlp4(input_dim,output_dim,nBlocks,width,
 	inp = Input(shape=(input_dim,))
 	if conv:
 		x = Reshape((9,input_dim/9,1))(inp)
-		x = Conv2D(64,(4,4),padding='valid',activation='relu')(x)
-		x = MaxPooling2D(3,padding='valid')(x)
+		for i in range(nConv):
+			print i
+			x = Conv2D(2**(6+i),(3,8),padding='same')(x)
+			x = _bn_relu(x)
+			x = MaxPooling2D((6,6),padding='same')(x)
 		x = Flatten()(x)
 		x = Dense(width)(x)
 	else:
@@ -318,8 +322,8 @@ endhdr
 	s += struct.pack('I',0x11223344)
 	scores = np.log(scores)/np.log(1.0001)
 	scores -= np.min(scores)
-	scores *= -0.01787411
-	scores += 816.90396927
+	scores *= 0.15492159
+	scores += 461.37415579
 	truncateToShort = lambda x: 32676 if x > 32767 else (-32768 if x < -32768 else x)
 	vf = np.vectorize(truncateToShort)
 	scores = vf(scores)
@@ -371,60 +375,38 @@ def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,context_len=4):
 
 print 'loading data...'
 meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
-# x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
-# y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
-# # end = x_train.shape[0] % 2048
-# # x_train = x_train[:-end]
-# # y_train = y_train[:-end]
-# nClasses = 138
-# print nClasses
-# print 'transforming labels...'
-# y_train = to_categorical(y_train, num_classes = nClasses)
+x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
+y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
+# end = x_train.shape[0] % 2048
+# x_train = x_train[:-end]
+# y_train = y_train[:-end]
+nClasses = 138
+print nClasses
+print 'transforming labels...'
+y_train = to_categorical(y_train, num_classes = nClasses)
 
 print 'loading test data...'
 x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
-# y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
-# # # end = x_test.shape[0] % 2048
-# # # x_test = x_test[:-end]
-# # # y_test = y_test[:-end]
-# # # x_test = x_train
-# # # y_test = y_train
-# print 'transforming labels...'
-# y_test = to_categorical(y_test, num_classes = nClasses)
+y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
+# # end = x_test.shape[0] % 2048
+# # x_test = x_test[:-end]
+# # y_test = y_test[:-end]
+# # x_test = x_train
+# # y_test = y_train
+print 'transforming labels...'
+y_test = to_categorical(y_test, num_classes = nClasses)
 
-# print 'initializing model...'
-# # model = mlp1(x_train.shape[1], nClasses,2,2048,BN=True)
-# # model = load_model('test_CP.h5')
+print 'initializing model...'
+# model = load_model('dbn-3x2048-sig-adagrad_CP.h5')
+model = mlp4(x_train.shape[1], nClasses,3,10,2048,BN=True,conv=True)
+# model = load_model('test_CP.h5')
 # model = DBN_DNN(x_train, nClasses,3,2048)
-# trainNtest(model,x_train,y_train,x_test,y_test,meta,'dbn-3x2048-sig-adagrad','dbn-3x2048-sig-adagrad')
-
-# data = np.loadtxt('1.csv',delimiter=',')
-# x_train = data[:,[0,1]]
-# y_train = data[:,[2]]
-
-# model = Sequential()
-# model.add(Dense(6,activation='sigmoid',input_dim=2))
-# model.add(Dense(1))
-# model.compile(optimizer='sgd',
-# 				loss='mean_squared_error',
-# 				metrics=['accuracy'])
-# model.fit(x_train,y_train,epochs=1,batch_size=256)
-# res = model.predict(x_train) 
-# print res, y_train
-# res = map(lambda x: 1 if x>= 0.5 else 0,res)
-# mydata = np.loadtxt('1.csv',delimiter=',')
-# mydata[:,2] = res
-# mydata_1 = mydata[np.where(mydata[:,2] == 1)][:,0:2]
-# mydata_0 = mydata[np.where(mydata[:,2] == 0)][:,0:2]
+trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-0x2048-adagrad','mlp4-0x2048-adagrad')
 
 
-# plt.scatter(mydata_1[:,0], mydata_1[:,1],color='r')
-# plt.scatter(mydata_0[:,0], mydata_0[:,1],color='b')
-# plt.savefig('mounira_test.png')
 
-
-model = load_model('mlp1-3x2048-sig-adagrad-BN_CP.h5')
-getPreds(model,'SI_ET_20.NDX','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores/','.sen')
+# model = load_model('mlp1-3x2048-sig-adagrad-BN_CP.h5')
+# getPreds(model,'../wsj/wsj0/single_dev.txt','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/single_dev_NN/','.sen')
 # pred = model.predict(x_test[:meta['framePos_Dev'][0]],verbose=1)
 # writeSenScores('senScores',pred)
 # np.save('pred.npy',pred)
