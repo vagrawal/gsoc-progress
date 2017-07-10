@@ -1,5 +1,5 @@
 import os
-CUDA_VISIBLE_DEVICES = '0'
+CUDA_VISIBLE_DEVICES = '3'
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 from keras.models import Sequential, Model
 from keras.optimizers import SGD,Adagrad
@@ -281,7 +281,7 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,plot_name,test
 
 		history = model.fit(x_train,y_train,epochs=50,batch_size=2048,
 							validation_data=(x_test,y_test),
-							callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,mode='min')])
+							callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,save_best_only=True,mode='min')])
 		# EarlyStopping(monitor='val_acc',min_delta=0.25,patience=1,mode='max')
 		# history = model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
 		# 								steps_per_epoch=len(meta['framePos_Train']), epochs=30,
@@ -309,7 +309,7 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,plot_name,test
 										len(meta['framePos_Dev']))
 		print score
 
-def writeSenScores(filename,scores):
+def writeSenScores(filename,scores,freqs):
 	n_active = scores.shape[1]
 	s = ''
 	s = """s3
@@ -320,16 +320,19 @@ logbase 1.000100
 endhdr
 """
 	s += struct.pack('I',0x11223344)
+	# print freqs
+	scores /= freqs
 	scores = np.log(scores)/np.log(1.0001)
-	scores -= np.min(scores)
-	scores *= 0.15492159
-	scores += 461.37415579
+	scores *= -1
+	scores -= np.min(scores,axis=1).reshape(-1,1)
+	# scores = scores.astype(int)
+	scores *= 0.1 * 0.02744634
 	truncateToShort = lambda x: 32676 if x > 32767 else (-32768 if x < -32768 else x)
 	vf = np.vectorize(truncateToShort)
 	scores = vf(scores)
 	# scores /= np.sum(scores,axis=0)
-	# print scores, np.max(scores)
 	for r in scores:
+		# print np.argmin(r)
 		s += struct.pack('h',n_active)
 		r_str = struct.pack('%sh' % len(r), *r)
 		# r_str = reduce(lambda x,y: x+y,r_str)
@@ -337,7 +340,7 @@ endhdr
 	with open(filename,'w') as f:
 		f.write(s)
 
-def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,context_len=4):
+def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,freqs,context_len=4):
 	with open(filelist) as f:
 		files = f.readlines()
 		files = map(lambda x: x.strip(),files)
@@ -371,42 +374,50 @@ def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,context_len=4):
 		dirname = os.path.dirname(res_file_path)
 		if not os.path.exists(dirname):
 			os.makedirs(dirname)
-		writeSenScores(res_file_path,preds)
+		writeSenScores(res_file_path,preds,freqs)
 
 print 'loading data...'
 meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
-x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
-y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
-# end = x_train.shape[0] % 2048
-# x_train = x_train[:-end]
-# y_train = y_train[:-end]
-nClasses = 138
-print nClasses
-print 'transforming labels...'
-y_train = to_categorical(y_train, num_classes = nClasses)
+# x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
+# y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
+# # end = x_train.shape[0] % 2048
+# # x_train = x_train[:-end]
+# # y_train = y_train[:-end]
+# nClasses = 138
+# print nClasses
+# print 'transforming labels...'
+# y_train = to_categorical(y_train, num_classes = nClasses)
 
 print 'loading test data...'
 x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
 y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
-# # end = x_test.shape[0] % 2048
-# # x_test = x_test[:-end]
-# # y_test = y_test[:-end]
-# # x_test = x_train
-# # y_test = y_train
+# # # end = x_test.shape[0] % 2048
+# # # x_test = x_test[:-end]
+# # # y_test = y_test[:-end]
+# # # x_test = x_train
+# # # y_test = y_train
 print 'transforming labels...'
 y_test = to_categorical(y_test, num_classes = nClasses)
 
-print 'initializing model...'
-# model = load_model('dbn-3x2048-sig-adagrad_CP.h5')
-model = mlp4(x_train.shape[1], nClasses,3,10,2048,BN=True,conv=True)
-# model = load_model('test_CP.h5')
-# model = DBN_DNN(x_train, nClasses,3,2048)
-trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-0x2048-adagrad','mlp4-0x2048-adagrad')
+# print 'initializing model...'
+# # model = load_model('dbn-3x2048-sig-adagrad_CP.h5')
+# model = mlp4(x_train.shape[1], nClasses,3,10,2048,BN=True,conv=True)
+# # model = load_model('test_CP.h5')
+# # model = DBN_DNN(x_train, nClasses,3,2048)
+# trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-0x2048-adagrad','mlp4-0x2048-adagrad')
 
 
 
-# model = load_model('mlp1-3x2048-sig-adagrad-BN_CP.h5')
-# getPreds(model,'../wsj/wsj0/single_dev.txt','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/single_dev_NN/','.sen')
-# pred = model.predict(x_test[:meta['framePos_Dev'][0]],verbose=1)
+# model = load_model('mlp1-3x2048-sig-adagrad-BN.h5')
+# getPreds(model,'../wsj/wsj0/single_dev.txt','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/single_dev_NN/','.sen',meta['state_freq_Train'])
+# getPreds(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores_dev/','.sen',meta['state_freq_Train'])
+# getPreds(model,'SI_ET_20.NDX','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores/','.sen',meta['state_freq_Train'])
+# f = filter(lambda x : '445c0403.wv1.flac' in x, meta['filenames_Test'])[0]
+# file_idx = list(meta['filenames_Test']).index(f)
+# print file_idx
+# split = lambda x: x[sum(meta['framePos_Test'][:file_idx]):sum(meta['framePos_Test'][:file_idx+1])]
+# pred = model.evaluate(split(x_test),split(y_test),verbose=1)
+# pred = model.evaluate(x_test,y_test,verbose=1)
+# print pred
 # writeSenScores('senScores',pred)
 # np.save('pred.npy',pred)
