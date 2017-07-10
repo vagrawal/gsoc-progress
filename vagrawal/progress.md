@@ -118,3 +118,7 @@ I also took quite some time to understand various methods of decoding. If the mo
 # 9 July
 
 I have many things about to write about the model and implementation, since I am hitting a major checkpoint. Will update tomorrow. I am just commiting my progress in LM for now.
+
+# 10 July
+
+Read various papers and thought about things I can do in the future.
