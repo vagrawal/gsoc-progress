@@ -122,3 +122,7 @@ I have many things about to write about the model and implementation, since I am
 # 10 July
 
 Read various papers and thought about things I can do in the future.
+
+# 11 July
+
+Moved forward in packaging the code, will commit tomorrow. Also read many papers. Will also start running few experiments tomorrow.
