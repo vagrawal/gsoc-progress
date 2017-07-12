@@ -126,3 +126,7 @@ Read various papers and thought about things I can do in the future.
 # 11 July
 
 Moved forward in packaging the code, will commit tomorrow. Also read many papers. Will also start running few experiments tomorrow.
+
+# 12 July
+
+Fixed many hanging pieces. Code quality is not very good now, but things seeems to work. Finally got LM to work completely, as I left it in a partially working state for quite some time. Commiting a fairly big update, which also includes many utilities for making FST in the format we need it.

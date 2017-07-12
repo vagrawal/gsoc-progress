@@ -2,7 +2,7 @@ import os
 import tensorflow as tf
 import numpy as np
 from seq2seq_model import seq2seq_model
-from data import read_data_queue, get_speaker_stats
+from data import read_data_queue, get_speaker_stats, vocab, vocab_to_int
 import time
 import argparse
 
@@ -32,7 +32,7 @@ def wer(r, h):
 
 
 def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, nfilt,
-        vocab_to_int, sess, coord, outputs, output_lengths, vocab,
+        sess, coord, outputs, output_lengths,
         batch_i, cost, keep_prob_tensor, mean_speaker, var_speaker,
         best_n_inference, pred_scores):
 
@@ -42,7 +42,7 @@ def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, nfilt,
         tf.Session.reset(None, ['queue'])
         with tf.Session() as sess:
             tf.train.Saver().restore(sess, checkpoint)
-            read_data_queue('si_et_05', queue, data_dir, nfilt, vocab_to_int,
+            read_data_queue('si_et_05', queue, data_dir, nfilt,
                     sess, mean_speaker, var_speaker)
             tot_wer = 0.0
             tot_cer = 0.0
@@ -104,14 +104,8 @@ def train(
         job_dir,
         checkpoint_path,
         best_n_inference,
-        eval_only):
-
-    vocab = np.asarray(
-            list(" '+-.ABCDEFGHIJKLMNOPQRSTUVWXYZ_") + ['<GO>', '<EOS>'])
-    vocab_to_int = {}
-
-    for ch in vocab:
-        vocab_to_int[ch] = len(vocab_to_int)
+        eval_only,
+        fst_path):
 
     checkpoint = job_dir + 'checkpoints/'
 
@@ -119,7 +113,6 @@ def train(
         sets = ['si_et_05']
     else:
         sets = ['si_et_05', 'si_tr_s']
-    mean_speaker, var_speaker = get_speaker_stats(data_dir, nfilt, sets)
 
     graph = tf.Graph()
     with graph.as_default():
@@ -145,17 +138,18 @@ def train(
                 input_lengths,
                 output_lengths,
                 max_output_len,
-                len(vocab),
                 rnn_size,
                 num_layers,
-                vocab_to_int,
                 tf.shape(input_lengths)[0],
                 beam_width,
-                learning_rate_tensor)
+                learning_rate_tensor,
+                fst_path)
 
         writer = tf.summary.FileWriter(job_dir)
         saver = tf.train.Saver()
         batch_loss = 0.0
+
+        mean_speaker, var_speaker = get_speaker_stats(data_dir, nfilt, sets)
 
         for epoch_i in range(1, num_epochs + 1):
             tf.Session.reset(None, ['queue'])
@@ -171,15 +165,15 @@ def train(
                     saver.restore(sess, checkpoint_path)
                     batch_i = sess.run(step)
                     run_eval(graph, job_dir, checkpoint_path, queue, predictions, data_dir,
-                            nfilt, vocab_to_int, sess, coord, outputs,
-                            output_lengths, vocab, batch_i, cost, keep_prob_tensor,
+                            nfilt, sess, coord, outputs,
+                            output_lengths, batch_i, cost, keep_prob_tensor,
                             mean_speaker, var_speaker, best_n_inference, pred_scores)
                     if (eval_only):
                         coord.request_stop()
                         return
 
                 read_data_queue('si_tr_s', queue, data_dir, nfilt,
-                        vocab_to_int, sess, mean_speaker, var_speaker)
+                        sess, mean_speaker, var_speaker)
 
                 with coord.stop_on_exception():
                     while not coord.should_stop():
@@ -256,5 +250,6 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint-path", default=None)
     parser.add_argument("--best-n-inference", default=1, type=int)
     parser.add_argument("--eval-only", default=False, type=bool)
+    parser.add_argument("--fst-path")
     args = parser.parse_args()
     train(**args.__dict__)

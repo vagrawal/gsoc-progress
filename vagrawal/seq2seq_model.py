@@ -1,6 +1,5 @@
 import tensorflow as tf
-from tensorflow.python.layers.core import Dense
-from tensorflow.python.ops.rnn_cell_impl import _zero_state_tensors
+from data import vocab, vocab_to_int, vocab_size
 from lm import LMCellWrapper
 
 def encoding_layer(
@@ -47,7 +46,6 @@ def encoding_layer(
 def training_decoding_layer(
         output_data,
         output_lengths,
-        vocab_size,
         rnn_size,
         enc_output,
         input_lengths,
@@ -95,7 +93,6 @@ def training_decoding_layer(
     return training_logits
 
 def inference_decoding_layer(
-        vocab_size,
         start_token,
         end_token,
         max_output_length,
@@ -104,7 +101,8 @@ def inference_decoding_layer(
         rnn_size,
         enc_output,
         input_lengths,
-        dec_cell):
+        dec_cell,
+        fst_path):
     enc_output = tf.contrib.seq2seq.tile_batch(
             enc_output,
             beam_width)
@@ -120,7 +118,7 @@ def inference_decoding_layer(
             normalize=False,
             name='BahdanauAttention')
 
-    dec_cell = LMCellWrapper(dec_cell, "../L.fst", 5, False)
+    dec_cell = LMCellWrapper(dec_cell, fst_path, 5, False)
 
     dec_cell = tf.contrib.seq2seq.AttentionWrapper(
             dec_cell,
@@ -158,13 +156,12 @@ def seq2seq_model(
         input_lengths,
         output_lengths,
         max_output_length,
-        vocab_size,
         rnn_size,
         num_layers,
-        vocab_to_int,
         batch_size,
         beam_width,
-        learning_rate):
+        learning_rate,
+        fst_path):
 
     enc_output, enc_state, enc_lengths = encoding_layer(
             rnn_size,
@@ -198,25 +195,24 @@ def seq2seq_model(
         training_logits = training_decoding_layer(
                 output_data,
                 output_lengths,
-                vocab_size,
                 rnn_size,
                 enc_output,
                 enc_lengths,
                 dec_cell,
                 batch_size,
-                vocab_to_int['<GO>'])
+                vocab_to_int['<s>'])
     with tf.variable_scope("decode", reuse=True):
         predictions = inference_decoding_layer(
-                len(vocab_to_int),
-                vocab_to_int['<GO>'],
-                vocab_to_int['<EOS>'],
+                vocab_to_int['<s>'],
+                vocab_to_int['</s>'],
                 max_output_length,
                 batch_size,
                 beam_width,
                 rnn_size,
                 enc_output,
                 enc_lengths,
-                dec_cell)
+                dec_cell,
+                fst_path)
 
     # Create tensors for the training logits and predictions
     training_logits = tf.identity(

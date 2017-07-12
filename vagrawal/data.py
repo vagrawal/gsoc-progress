@@ -5,6 +5,16 @@ import tensorflow as tf
 import threading
 import random
 
+vocab = np.asarray(
+        ['<eps>', '<s>', '</s>'] + list(" '.-ABCDEFGHIJKLMNOPQRSTUVWXYZ") + ['<backoff>'])
+vocab_to_int = {}
+
+for ch in vocab:
+    vocab_to_int[ch] = len(vocab_to_int)
+
+# backoff is not in vocabulary
+vocab_size = len(vocab) - 1
+
 # A custom class inheriting tf.gfile.Open for providing seek with whence
 class FileOpen(tf.gfile.Open):
     def seek(self, position, whence = 0):
@@ -24,6 +34,7 @@ def get_features(file, nfilt):
     return np.concatenate([feat, dfeat, ddfeat, np.expand_dims(energy, 1)], axis=1)
 
 def get_speaker_stats(root, nfilt, set_ids):
+    tf.logging.info("Getting speaker stats")
     trans = FileOpen(root + 'transcripts/wsj0/wsj0.trans').readlines()
     sum = {}
     sum_sq = {}
@@ -46,7 +57,7 @@ def get_speaker_stats(root, nfilt, set_ids):
     var =  {k: sum_sq[k] / count[k] - np.square(mean[k]) for k, v in sum.items()}
     return mean, var
 
-def read_data_queue(set_id, queue, root, nfilt, vocab_to_int, sess,
+def read_data_queue(set_id, queue, root, nfilt, sess,
         mean_speaker, var_speaker):
     input_data = tf.placeholder(dtype=tf.float32, shape=[None, nfilt * 3 + 1])
     input_length = tf.placeholder(dtype=tf.int32, shape=[])
@@ -62,7 +73,6 @@ def read_data_queue(set_id, queue, root, nfilt, vocab_to_int, sess,
             set_id,
             root,
             nfilt,
-            vocab_to_int,
             queue,
             sess,
             input_data,
@@ -80,8 +90,6 @@ def read_data_thread(
         set_id,
         root,
         nfilt,
-        vocab_to_int,
-        queue,
         sess,
         input_data,
         input_length,
