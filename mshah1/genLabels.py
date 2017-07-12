@@ -16,7 +16,10 @@ def ping():
 
 
 def read_sen_labels_from_mdef(fname, onlyPhone=True):
-	labels = np.loadtxt(fname,dtype=str,skiprows=11,usecols=(0,6,7,8))
+	labels = np.loadtxt(fname,dtype=str,skiprows=10,usecols=(0,1,2,3,6,7,8))
+	labels = map(lambda x: 
+					[reduce(lambda a,b: a+' '+b, 
+						filter(lambda y: y != '-', x[:4]))] + list(x[4:]), labels)
 	if onlyPhone:
 		labels = labels[:44]
 	phone2state = {}
@@ -32,13 +35,16 @@ def frame2state(fname, phone2state, onlyPhone=True):
 		lines = map(lambda x: x[:2],lines)
 	else:
 		lines = map(lambda x: [x[0], reduce(lambda a,b: a+' '+b,x[1:])],lines)
+	for l in lines:
+		if l[1] not in phone2state:
+			l[1] = l[1].split()[0]
 	states = map(lambda x: phone2state[x[1]][int(x[0])], lines)
 	return (list(states))
 
 def genDataset(DB_path, filelist, feat_path, stseg_path, mdef_fname, context_len=None):
 	global done
 	files = np.loadtxt(DB_path+filelist,dtype=str)
-	files = map(lambda x: DB_path+feat_path+x+'.mfc',files)
+	files = map(lambda x: DB_path+feat_path+x+'.mls',files)
 	
 	train_files = filter(lambda x: 'tr' in x.split('/')[-3] and
 									'wv1' == x.split('.')[-3], files)
@@ -58,7 +64,7 @@ def genDataset(DB_path, filelist, feat_path, stseg_path, mdef_fname, context_len
 	print "Training Files: %d 	Dev Files: %d	Testing Files: %d" % (len(stseg_files_train), len(stseg_files_dev), len(stseg_files_test))
 	
 	phone2state = read_sen_labels_from_mdef(mdef_fname,onlyPhone=False)
-	
+
 	X_Train = []
 	Y_Train = []
 	X_Test = []
@@ -84,10 +90,12 @@ def genDataset(DB_path, filelist, feat_path, stseg_path, mdef_fname, context_len
 		sys.stdout.write("\r%d/%d 	" % (i,len(stseg_files)))
 		sys.stdout.flush()
 		f = stseg_files[i]
+		
 		data_file = filter(lambda x: f[:-9] in x, files)[0]
 		
 		data = np.loadtxt(data_file).astype('float32')
 		labels = frame2state(DB_path + stseg_path + f, phone2state,onlyPhone=False)
+
 		nFrames = min(len(labels), data.shape[0])
 		data = data[:nFrames]
 		data = scaler.fit_transform(data)
@@ -191,6 +199,6 @@ def normalizeByUtterance():
 	print data
 #print(read_sen_labels_from_mdef('../wsj_all_cd30.mllt_cd_cont_4000/mdef'))
 # frame2state('../wsj/wsj0/statesegdir/40po031e.wv2.flac.stseg.txt', '../wsj_all_cd30.mllt_cd_cont_4000/mdef')
-genDataset('../wsj/wsj0/','etc/wsj0_train.fileids','feat_ci_mls/','stateseg_ci_dir/','../en_us.ci_cont/mdef',context_len=4)
+genDataset('../wsj/wsj0/','etc/wsj0_train.fileids','feat_cd_mls/','stateseg_cd_dir/','../en_us.cd_cont_4000/mdef',context_len=4)
 # normalizeByUtterance()
 # ../wsj/wsj0/feat_mls/11_6_1/wsj0/sd_dt_20/00b/00bo0t0e.wv1.flac.mls 00bo0t0e.wv1.flac.stseg.txt

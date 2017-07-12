@@ -19,7 +19,7 @@ def readSen(fname, print_most_prob_sen=False):
 			continue
 		n_active = struct.unpack('h',v)[0]
 		# print n_active
-		assert n_active == 138
+		assert n_active == 4138
 
 		v = f.read(2*n_active)
 		scores = list(struct.unpack('%sh' % n_active, v))
@@ -33,8 +33,8 @@ ndx_list = map(lambda x: '../wsj/wsj0/senscores_dev/'+x+'.sen', np.loadtxt('../w
 file_list = map(lambda x: '../wsj/wsj0/sendump_dev_ci/' + x, os.listdir('../wsj/wsj0/sendump_dev_ci/'))
 file_list.sort()
 file_list = file_list[:-1]
-# ndx_list = ['../wsj/wsj0/single_dev_NN/11_14_1/wsj0/si_et_20/445/445c0403.wv1.flac.sen']
-# file_list = ['../wsj/wsj0/single_dev/11_14_1/wsj0/si_et_20/445/445c0403.wv1.flac.sen']
+ndx_list = ['../wsj/wsj0/single_dev_NN/11_14_1/wsj0/si_et_20/445/445c0403.wv1.flac.sen']
+file_list = ['../wsj/wsj0/single_dev/11_14_1/wsj0/si_et_20/445/445c0403.wv1.flac.sen']
 x = []
 y = []
 for i in range(len(file_list)):
@@ -42,7 +42,7 @@ for i in range(len(file_list)):
 		print i,ndx_list[i], file_list[i]
 		y += list(readSen(ndx_list[i]))
 		x += list(readSen(file_list[i]))
-		print len(x),len(y), len(x)/138, len(y)/138
+		print len(x),len(y), len(x)/4138, len(y)/4138
 		assert len(x) == len(y)
 	else:
 		print i,ndx_list[i+1], file_list[i]

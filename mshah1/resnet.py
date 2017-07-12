@@ -6,7 +6,8 @@ from keras.layers import (
     Input,
     Activation,
     Dense,
-    Flatten
+    Flatten,
+    Reshape
 )
 from keras.layers.convolutional import (
     Conv2D,
@@ -182,7 +183,7 @@ def _get_block(identifier):
 
 class ResnetBuilder(object):
     @staticmethod
-    def build(input_shape, num_outputs, block_fn, repetitions):
+    def build(input_shape, num_outputs, block_fn, repetitions, reshape_layer=None):
         """Builds a custom ResNet like architecture.
 
         Args:
@@ -208,7 +209,11 @@ class ResnetBuilder(object):
         block_fn = _get_block(block_fn)
 
         input = Input(shape=input_shape)
-        conv1 = _conv_bn_relu(filters=64, kernel_size=(7, 7), strides=(2, 2))(input)
+        if reshape_layer != None:
+            x = reshape_layer(input)
+            conv1 = _conv_bn_relu(filters=64, kernel_size=(7, 7), strides=(2, 2))(x)
+        else:
+            conv1 = _conv_bn_relu(filters=64, kernel_size=(7, 7), strides=(2, 2))(input)
         pool1 = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding="same")(conv1)
 
         block = pool1
@@ -232,8 +237,8 @@ class ResnetBuilder(object):
         return model
 
     @staticmethod
-    def build_resnet_18(input_shape, num_outputs):
-        return ResnetBuilder.build(input_shape, num_outputs, basic_block, [2, 2, 2, 2])
+    def build_resnet_18(input_shape, num_outputs, reshape_layer=None):
+        return ResnetBuilder.build(input_shape, num_outputs, basic_block, [2, 2, 2, 2], reshape_layer=reshape_layer)
 
     @staticmethod
     def build_resnet_34(input_shape, num_outputs):

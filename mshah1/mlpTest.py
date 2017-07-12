@@ -9,7 +9,7 @@ from keras.layers.core import Lambda
 from keras.layers.merge import add, concatenate
 from keras.utils import to_categorical, plot_model
 from keras.models import load_model, Model
-from keras.callbacks import History,ModelCheckpoint,EarlyStopping
+from keras.callbacks import History,ModelCheckpoint,EarlyStopping,ReduceLROnPlateau
 import keras.backend as K
 import numpy as np
 import matplotlib.pyplot as plt
@@ -22,6 +22,7 @@ from sklearn.preprocessing import StandardScaler
 from guppy import hpy
 import threading
 import struct
+import resnet
 # from multi_gpu import make_parallel
 # import matplotlib as mpl
 # print mpl.matplotlib_fname()
@@ -40,9 +41,9 @@ def mlp1(input_dim,output_dim,depth,width,dropout=False,BN=False):
 		if BN:
 			model.add(BatchNormalization())
 	model.add(Dense(output_dim, activation='softmax'))
-	opt = Adagrad(lr=1/(np.sqrt(input_dim) * np.sqrt(width)))
+	opt = Adagrad(lr=100/(np.sqrt(input_dim * width * output_dim)))
 	model.compile(optimizer=opt,
-	              loss='categorical_crossentropy',
+	              loss='sparse_categorical_crossentropy',
 	              metrics=['accuracy'])
 	return model
 
@@ -88,13 +89,13 @@ def make_dense_res_block(inp, size, width, drop=False,BN=False):
 	for i in range(size):
 		x = Dense(width)(x)
 		if drop:
-			x = Dropout(0.25)(x)
+			x = Dropout(0.5)(x)
 		if BN and i < size - 1:
 			x = _bn_relu(x)
 	return x
 
 def mlp4(input_dim,output_dim,nConv,nBlocks,width, 
-			block_width=None, drop=False, BN=False, 
+			block_width=None, dropout=False, BN=False, 
 			parallelize=False, conv=False):
 	if block_width == None:
 		block_width = width
@@ -105,7 +106,7 @@ def mlp4(input_dim,output_dim,nConv,nBlocks,width,
 			print i
 			x = Conv2D(2**(6+i),(3,8),padding='same')(x)
 			x = _bn_relu(x)
-			x = MaxPooling2D((6,6),padding='same')(x)
+			x = MaxPooling2D((2*(i+1),2*(i+1)),padding='same')(x)
 		x = Flatten()(x)
 		x = Dense(width)(x)
 	else:
@@ -113,7 +114,7 @@ def mlp4(input_dim,output_dim,nConv,nBlocks,width,
 	if BN:
 		x = _bn_relu(x)
 	for i in range(nBlocks):
-		y = make_dense_res_block(x,2,block_width,BN=BN,drop=drop)
+		y = make_dense_res_block(x,2,block_width,BN=BN,drop=dropout)
 		if block_width != width:
 			y = Dense(width)(x)
 		x = add([x,y])
@@ -126,10 +127,19 @@ def mlp4(input_dim,output_dim,nConv,nBlocks,width,
 	opt = Adagrad(lr=1/(np.sqrt(input_dim * width)))
 	# opt = SGD(lr=1/(np.sqrt(input_dim * width)), decay=1e-6, momentum=0.9, nesterov=True)
 	model.compile(optimizer=opt,
-	              loss='categorical_crossentropy',
+	              loss='sparse_categorical_crossentropy',
 	              metrics=['accuracy'])
 	return model
 
+def resnet_wrapper(input_dim,output_dim):
+	builder = resnet.ResnetBuilder()
+	model = builder.build_resnet_18((1,1,input_dim), output_dim, Reshape((9,input_dim/9,1)))
+	opt = Adagrad(lr=1/np.sqrt(input_dim))
+	# opt = SGD(lr=1/(np.sqrt(input_dim * width)), decay=1e-6, momentum=0.9, nesterov=True)
+	model.compile(optimizer=opt,
+	              loss='sparse_categorical_crossentropy',
+	              metrics=['accuracy'])
+	return model
 def DBN_DNN(inp,nClasses,depth,width,batch_size=2048):
 	RBMs = []
 	weights = []
@@ -148,7 +158,8 @@ def DBN_DNN(inp,nClasses,depth,width,batch_size=2048):
 		rbm = BBRBM(n_visible=width,n_hidden=width,learning_rate=0.02, momentum=0.90, use_tqdm=True)
 		for e in range(nEpoches):
 			for j in range(n_batches):
-				print "\r%d batch no %d/%d epoch no %d/%d" % (int(time.time()),j+1,n_batches,e,nEpoches)
+				stdout.write("\r%d batch no %d/%d epoch no %d/%d" % (int(time.time()),j+1,n_batches,e,nEpoches))
+				stdout.flush()
 				b = np.array(inp[j*batch_size:min((j+1)*batch_size, inp.shape[0])])
 				for r in RBMs:
 					b = r.transform(b)
@@ -249,7 +260,7 @@ def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],train_layer_0=F
 			print "untrainable layer ",j
 			model_new.layers[j].trainable=False
 		model_new.compile(optimizer='adagrad',
-	              loss='categorical_crossentropy',
+	              loss='sparse_categorical_crossentropy',
 	              metrics=['accuracy'])
 		print model_new.summary()
 		model_new.fit(x_train,y_train,epochs=1,batch_size=256)
@@ -281,7 +292,8 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,plot_name,test
 
 		history = model.fit(x_train,y_train,epochs=50,batch_size=2048,
 							validation_data=(x_test,y_test),
-							callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,save_best_only=True,mode='min')])
+							callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,save_best_only=True,mode='min'),
+										ReduceLROnPlateau(patience=5,min_lr=10*(-6))])
 		# EarlyStopping(monitor='val_acc',min_delta=0.25,patience=1,mode='max')
 		# history = model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
 		# 								steps_per_epoch=len(meta['framePos_Train']), epochs=30,
@@ -314,25 +326,26 @@ def writeSenScores(filename,scores,freqs):
 	s = ''
 	s = """s3
 version 0.1
-mdef_file ../../en_us.ci_cont/mdef
-n_sen 138
+mdef_file ../../en_us.cd_cont_4000/mdef
+n_sen 4138
 logbase 1.000100
 endhdr
 """
 	s += struct.pack('I',0x11223344)
 	# print freqs
-	scores /= freqs
+	scores /= freqs + (1.0 / len(freqs))
 	scores = np.log(scores)/np.log(1.0001)
 	scores *= -1
 	scores -= np.min(scores,axis=1).reshape(-1,1)
 	# scores = scores.astype(int)
-	scores *= 0.1 * 0.02744634
+	scores *= 0.1 * 0.00282001
+	scores += 271.10506735
 	truncateToShort = lambda x: 32676 if x > 32767 else (-32768 if x < -32768 else x)
 	vf = np.vectorize(truncateToShort)
 	scores = vf(scores)
 	# scores /= np.sum(scores,axis=0)
 	for r in scores:
-		# print np.argmin(r)
+		print np.argmin(r)
 		s += struct.pack('h',n_active)
 		r_str = struct.pack('%sh' % len(r), *r)
 		# r_str = reduce(lambda x,y: x+y,r_str)
@@ -378,13 +391,13 @@ def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,freqs,context_len=
 
 print 'loading data...'
 meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
-# x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
-# y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
-# # end = x_train.shape[0] % 2048
-# # x_train = x_train[:-end]
-# # y_train = y_train[:-end]
-# nClasses = 138
-# print nClasses
+x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
+y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
+# end = x_train.shape[0] % 2048
+# x_train = x_train[:-end]
+# y_train = y_train[:-end]
+nClasses = np.max(y_train) + 1
+print nClasses
 # print 'transforming labels...'
 # y_train = to_categorical(y_train, num_classes = nClasses)
 
@@ -396,28 +409,30 @@ y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
 # # # y_test = y_test[:-end]
 # # # x_test = x_train
 # # # y_test = y_train
-print 'transforming labels...'
-y_test = to_categorical(y_test, num_classes = nClasses)
+# print 'transforming labels...'
+# y_test = to_categorical(y_test, num_classes = nClasses)
 
-# print 'initializing model...'
-# # model = load_model('dbn-3x2048-sig-adagrad_CP.h5')
-# model = mlp4(x_train.shape[1], nClasses,3,10,2048,BN=True,conv=True)
-# # model = load_model('test_CP.h5')
-# # model = DBN_DNN(x_train, nClasses,3,2048)
-# trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-0x2048-adagrad','mlp4-0x2048-adagrad')
+print 'initializing model...'
+# model = load_model('dbn-3x2048-sig-adagrad_CP.h5')
+model = mlp4(x_train.shape[1], nClasses,3,10,2048,BN=True,conv=False,dropout=True)
+# model = mlp1(x_train.shape[1], nClasses,8,2048,BN=True)
+# model = load_model('test_CP.h5')
+# model = DBN_DNN(x_train, nClasses,5,2048,batch_size=128)
+# # model = resnet_wrapper(x_train.shape[1], nClasses)
+trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-10x2048-adagrad-drop-cd','mlp4-10x2048-adagrad-drop-cd')
 
 
 
-# model = load_model('mlp1-3x2048-sig-adagrad-BN.h5')
+# model = load_model('mlp1-3x2048-sig-adagrad-cd.h5')
 # getPreds(model,'../wsj/wsj0/single_dev.txt','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/single_dev_NN/','.sen',meta['state_freq_Train'])
 # getPreds(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores_dev/','.sen',meta['state_freq_Train'])
-# getPreds(model,'SI_ET_20.NDX','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores/','.sen',meta['state_freq_Train'])
-# f = filter(lambda x : '445c0403.wv1.flac' in x, meta['filenames_Test'])[0]
-# file_idx = list(meta['filenames_Test']).index(f)
-# print file_idx
-# split = lambda x: x[sum(meta['framePos_Test'][:file_idx]):sum(meta['framePos_Test'][:file_idx+1])]
-# pred = model.evaluate(split(x_test),split(y_test),verbose=1)
-# pred = model.evaluate(x_test,y_test,verbose=1)
-# print pred
-# writeSenScores('senScores',pred)
-# np.save('pred.npy',pred)
+# getPreds(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/senscores_dev_cd/','.sen',meta['state_freq_Train'])
+# f = filter(lambda x : '22go0208.wv1.flac' in x, meta['filenames_Dev'])[0]
+# file_idx = list(meta['filenames_Dev']).index(f)
+# # print file_idx
+# split = lambda x: x[sum(meta['framePos_Dev'][:file_idx]):sum(meta['framePos_Dev'][:file_idx+1])]
+# # pred = model.evaluate(split(x_test),split(y_test),verbose=1)
+# pred = model.predict(split(x_test),verbose=1)
+# # print pred
+# # writeSenScores('senScores',pred)
+# np.save('pred.npy',np.log(pred)/np.log(1.001))
