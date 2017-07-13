@@ -199,6 +199,6 @@ def normalizeByUtterance():
 	print data
 #print(read_sen_labels_from_mdef('../wsj_all_cd30.mllt_cd_cont_4000/mdef'))
 # frame2state('../wsj/wsj0/statesegdir/40po031e.wv2.flac.stseg.txt', '../wsj_all_cd30.mllt_cd_cont_4000/mdef')
-genDataset('../wsj/wsj0/','etc/wsj0_train.fileids','feat_cd_mls/','stateseg_cd_dir/','../en_us.cd_cont_4000/mdef',context_len=4)
+genDataset('../wsj/wsj0/','etc/wsj0_train.fileids','feat_ci_mls/','stateseg_ci_dir/','../en_us.ci_cont/mdef')
 # normalizeByUtterance()
 # ../wsj/wsj0/feat_mls/11_6_1/wsj0/sd_dt_20/00b/00bo0t0e.wv1.flac.mls 00bo0t0e.wv1.flac.stseg.txt

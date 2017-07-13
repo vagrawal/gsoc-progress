@@ -1,5 +1,5 @@
 import os
-CUDA_VISIBLE_DEVICES = '3'
+CUDA_VISIBLE_DEVICES = '2'
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 from keras.models import Sequential, Model
 from keras.optimizers import SGD,Adagrad
@@ -10,6 +10,7 @@ from keras.layers.merge import add, concatenate
 from keras.utils import to_categorical, plot_model
 from keras.models import load_model, Model
 from keras.callbacks import History,ModelCheckpoint,EarlyStopping,ReduceLROnPlateau
+from keras import regularizers
 import keras.backend as K
 import numpy as np
 import matplotlib.pyplot as plt
@@ -23,19 +24,21 @@ from guppy import hpy
 import threading
 import struct
 import resnet
-# from multi_gpu import make_parallel
+from multi_gpu import make_parallel
 # import matplotlib as mpl
 # print mpl.matplotlib_fname()
 # mpl.rcParams['backend'] = 'agg'
 # plt = mpl.pyplot
 
-def mlp1(input_dim,output_dim,depth,width,dropout=False,BN=False):
+def mlp1(input_dim,output_dim,depth,width,dropout=False,BN=False, regularize=False):
 	model = Sequential()
-	model.add(Dense(width, activation='sigmoid', input_dim=input_dim))
+	model.add(Dense(width, activation='sigmoid', input_dim=input_dim,
+					kernel_regularizer=regularizers.l2() if regularize else None))
 	if BN:
 		model.add(BatchNormalization())
 	for i in range(depth):
-		model.add(Dense(width, activation='sigmoid'))
+		model.add(Dense(width, activation='sigmoid',
+						kernel_regularizer=regularizers.l2() if regularize else None))
 		if dropout:
 			model.add(Dropout(0.25))
 		if BN:
@@ -84,10 +87,11 @@ def _bn_relu(input):
     norm = BatchNormalization()(input)
     return Activation("relu")(norm)
 
-def make_dense_res_block(inp, size, width, drop=False,BN=False):
+def make_dense_res_block(inp, size, width, drop=False,BN=False,regularize=False):
 	x = inp
 	for i in range(size):
-		x = Dense(width)(x)
+		x = Dense(width,
+					kernel_regularizer=regularizers.l2() if regularize else None)(x)
 		if drop:
 			x = Dropout(0.5)(x)
 		if BN and i < size - 1:
@@ -96,7 +100,7 @@ def make_dense_res_block(inp, size, width, drop=False,BN=False):
 
 def mlp4(input_dim,output_dim,nConv,nBlocks,width, 
 			block_width=None, dropout=False, BN=False, 
-			parallelize=False, conv=False):
+			parallelize=False, conv=False, regularize=False):
 	if block_width == None:
 		block_width = width
 	inp = Input(shape=(input_dim,))
@@ -108,13 +112,15 @@ def mlp4(input_dim,output_dim,nConv,nBlocks,width,
 			x = _bn_relu(x)
 			x = MaxPooling2D((2*(i+1),2*(i+1)),padding='same')(x)
 		x = Flatten()(x)
-		x = Dense(width)(x)
+		x = Dense(width,
+					kernel_regularizer=regularizers.l2() if regularize else None)(x)
 	else:
-		x = Dense(width)(inp)
+		x = Dense(width,
+					kernel_regularizer=regularizers.l2() if regularize else None)(inp)
 	if BN:
 		x = _bn_relu(x)
 	for i in range(nBlocks):
-		y = make_dense_res_block(x,2,block_width,BN=BN,drop=dropout)
+		y = make_dense_res_block(x,2,block_width,BN=BN,drop=dropout,regularize=regularize)
 		if block_width != width:
 			y = Dense(width)(x)
 		x = add([x,y])
@@ -272,7 +278,7 @@ def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],train_layer_0=F
 		l.trainable = True
 	return model
 
-def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,plot_name,testOnly=False,pretrain=False,init_epoch=0):
+def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,testOnly=False,pretrain=False,init_epoch=0):
 
 	# model = mlp4(20, 132,2,2048)
 	# print model.summary()
@@ -290,10 +296,10 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,plot_name,test
 		print model.summary()
 		print 'starting fit...'
 
-		history = model.fit(x_train,y_train,epochs=50,batch_size=2048,
+		history = model.fit(x_train,y_train,epochs=75,batch_size=2048,
 							validation_data=(x_test,y_test),
-							callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,save_best_only=True,mode='min'),
-										ReduceLROnPlateau(patience=5,min_lr=10*(-6))])
+							callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,save_best_only=True,verbose=1),
+										ReduceLROnPlateau(patience=5,min_lr=10*(-6), verbose=1)])
 		# EarlyStopping(monitor='val_acc',min_delta=0.25,patience=1,mode='max')
 		# history = model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
 		# 								steps_per_epoch=len(meta['framePos_Train']), epochs=30,
@@ -302,6 +308,7 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,plot_name,test
 		# 								callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,mode='min')])
 		print 'saving model...'
 		model.save(modelName+'.h5')
+		model.save_weights(modelName+'_W.h5')
 		print(history.history.keys())
 
 		print 'plotting graphs...'
@@ -312,7 +319,7 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,plot_name,test
 		plt.ylabel('accuracy')
 		plt.xlabel('epoch')
 		plt.legend(['training acc', 'testing acc'])
-		plt.savefig(plot_name+'.png')
+		plt.savefig(modelName+'.png')
 		plt.clf()
 	else:
 		model = load_model(modelName)
@@ -414,13 +421,12 @@ y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
 
 print 'initializing model...'
 # model = load_model('dbn-3x2048-sig-adagrad_CP.h5')
-model = mlp4(x_train.shape[1], nClasses,3,10,2048,BN=True,conv=False,dropout=True)
-# model = mlp1(x_train.shape[1], nClasses,8,2048,BN=True)
+# model = mlp4(x_train.shape[1], nClasses,3,10,2048,BN=True,conv=False,dropout=False,regularize=True)
+model = mlp1(x_train.shape[1], nClasses,1,5120,BN=True,regularize=False)
 # model = load_model('test_CP.h5')
 # model = DBN_DNN(x_train, nClasses,5,2048,batch_size=128)
 # # model = resnet_wrapper(x_train.shape[1], nClasses)
-trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-10x2048-adagrad-drop-cd','mlp4-10x2048-adagrad-drop-cd')
-
+trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp1-2x5120-adagrad-BN-cd')
 
 
 # model = load_model('mlp1-3x2048-sig-adagrad-cd.h5')
