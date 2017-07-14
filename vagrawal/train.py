@@ -2,39 +2,17 @@ import os
 import tensorflow as tf
 import numpy as np
 from seq2seq_model import seq2seq_model
-from data import read_data_queue, get_speaker_stats, vocab, vocab_to_int
+from data import read_data_queue, get_speaker_stats
+from vocab import vocab
+from vocab import vocab
 import time
 import argparse
-
-# https://github.com/zszyellow/WER-in-python/blob/master/wer.py
-def wer(r, h):
-    """
-    This is a function that calculate the word error rate in ASR.
-    You can use it like this: wer("what is it".split(), "what is".split())
-    """
-    #build the matrix
-    d = np.zeros((len(r)+1)*(len(h)+1), dtype=np.uint8).reshape((len(r)+1, len(h)+1))
-    for i in range(len(r)+1):
-        for j in range(len(h)+1):
-            if i == 0: d[0][j] = j
-            elif j == 0: d[i][0] = i
-    for i in range(1,len(r)+1):
-        for j in range(1, len(h)+1):
-            if r[i-1] == h[j-1]:
-                d[i][j] = d[i-1][j-1]
-            else:
-                substitute = d[i-1][j-1] + 1
-                insert = d[i][j-1] + 1
-                delete = d[i-1][j] + 1
-                d[i][j] = min(substitute, insert, delete)
-    return float(d[len(r)][len(h)]) / max(len(r), len(h)) * 100
-
-
+from fst import fstCosts
 
 def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, nfilt,
         sess, coord, outputs, output_lengths,
         batch_i, cost, keep_prob_tensor, mean_speaker, var_speaker,
-        best_n_inference, pred_scores):
+        best_n_inference, pred_scores, LMfst):
 
     tf.logging.info("Evaluation started")
     with graph.as_default():
@@ -43,7 +21,7 @@ def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, nfilt,
         with tf.Session() as sess:
             tf.train.Saver().restore(sess, checkpoint)
             read_data_queue('si_et_05', queue, data_dir, nfilt,
-                    sess, mean_speaker, var_speaker)
+                    sess, mean_speaker, var_speaker, LMfst)
             tot_wer = 0.0
             tot_cer = 0.0
             batch_loss = 0.0
@@ -114,6 +92,8 @@ def train(
     else:
         sets = ['si_et_05', 'si_tr_s']
 
+    LMfst = fst.Fst.read_from_string(FileOpen(fst_path).read())
+
     graph = tf.Graph()
     with graph.as_default():
         learning_rate_tensor = tf.placeholder(
@@ -143,7 +123,7 @@ def train(
                 tf.shape(input_lengths)[0],
                 beam_width,
                 learning_rate_tensor,
-                fst_path)
+                LMfst)
 
         writer = tf.summary.FileWriter(job_dir)
         saver = tf.train.Saver()
@@ -167,12 +147,14 @@ def train(
                     run_eval(graph, job_dir, checkpoint_path, queue, predictions, data_dir,
                             nfilt, sess, coord, outputs,
                             output_lengths, batch_i, cost, keep_prob_tensor,
-                            mean_speaker, var_speaker, best_n_inference, pred_scores)
+                            mean_speaker, var_speaker, best_n_inference,
+                            pred_scores, LMfst)
                     if (eval_only):
                         coord.request_stop()
                         return
 
                 read_data_queue('si_tr_s', queue, data_dir, nfilt,
+                        sess, None, None, LMfst)
                         sess, mean_speaker, var_speaker)
 
                 with coord.stop_on_exception():
@@ -183,6 +165,7 @@ def train(
                                 [cost, train_op, step],
                                 feed_dict={learning_rate_tensor: learning_rate,
                                     keep_prob_tensor: keep_prob})
+                        print("Loss: ", loss)
 
                         batch_loss += loss
                         end_time = time.time()
@@ -202,8 +185,8 @@ def train(
                                     [predictions, outputs, output_lengths],
                                     feed_dict={keep_prob_tensor: 1.0})
                             for i in range(pred.shape[0]):
-                                real_out = ''.join([vocab[l] for l in out[i, :out_len[i] - 1, 0]])
-                                pred_out = ''.join([vocab[l] for l in pred[i, :]])
+                                real_out = ''.join([vocab[l] for l in out[i, :out_len[i] - 1]])
+                                pred_out = ''.join([vocab[l] for l in pred[i, :, 0]])
                                 pred_out = pred_out.split('<')[0]
                                 tot_wer += wer(real_out.split(), pred_out.split())
                                 tot_cer += wer(list(real_out), list(pred_out))

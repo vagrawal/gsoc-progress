@@ -4,26 +4,10 @@ import scipy.io.wavfile
 import tensorflow as tf
 import threading
 import random
-
-vocab = np.asarray(
-        ['<eps>', '<s>', '</s>'] + list(" '.-ABCDEFGHIJKLMNOPQRSTUVWXYZ") + ['<backoff>'])
-vocab_to_int = {}
-
-for ch in vocab:
-    vocab_to_int[ch] = len(vocab_to_int)
-
-# backoff is not in vocabulary
-vocab_size = len(vocab) - 1
-
-# A custom class inheriting tf.gfile.Open for providing seek with whence
-class FileOpen(tf.gfile.Open):
-    def seek(self, position, whence = 0):
-        if (whence == 0):
-            tf.gfile.Open.seek(self, position)
-        elif (whence == 1):
-            tf.gfile.Open.seek(self, self.tell() + position)
-        else:
-            raise FileError
+from fst import in_fst
+from vocab import vocab_to_int
+from utils import FileOpen
+import pywrapfst as fst
 
 def get_features(file, nfilt):
     sample_rate, signal = scipy.io.wavfile.read(FileOpen(file))
@@ -58,7 +42,7 @@ def get_speaker_stats(root, nfilt, set_ids):
     return mean, var
 
 def read_data_queue(set_id, queue, root, nfilt, sess,
-        mean_speaker, var_speaker):
+        mean_speaker, var_speaker, LMfst):
     input_data = tf.placeholder(dtype=tf.float32, shape=[None, nfilt * 3 + 1])
     input_length = tf.placeholder(dtype=tf.int32, shape=[])
     output_data = tf.placeholder(dtype=tf.int32, shape=[None])
@@ -73,7 +57,6 @@ def read_data_queue(set_id, queue, root, nfilt, sess,
             set_id,
             root,
             nfilt,
-            queue,
             sess,
             input_data,
             input_length,
@@ -82,7 +65,8 @@ def read_data_queue(set_id, queue, root, nfilt, sess,
             enqueue_op,
             close_op,
             mean_speaker,
-            var_speaker))
+            var_speaker,
+            LMfst))
     thread.daemon = True  # Thread will close when parent quits.
     thread.start()
 
@@ -98,17 +82,21 @@ def read_data_thread(
         enqueue_op,
         close_op,
         mean_speaker,
-        var_speaker):
+        var_speaker,
+        LMfst):
+
     trans = FileOpen(root + 'transcripts/wsj0/wsj0.trans').readlines()
     random.shuffle(trans)
     for line in trans:
         text, file = line.split('(')
-        text = text[:-1]
         # Remove sounds
         text = "".join(text.split("++")[::2])
-        text = [vocab_to_int[c] for c in list(text)] + [vocab_to_int['<EOS>']]
+        try:
+            text = [vocab_to_int[c] for c in list(text)] + [vocab_to_int['</s>']]
+        except:
+            continue
         file = file[:-2]
-        if (set_id == file.split('/')[2] and 'wv1' == file.split('.')[1]):
+        if (in_fst(LMfst, text) and set_id == file.split('/')[2] and 'wv1' == file.split('.')[1]):
             feat = get_features(root + 'wav/' + file, nfilt)
             feat = feat - mean_speaker[file.split('/')[3]]
             feat = feat / np.sqrt(var_speaker[file.split('/')[3]])

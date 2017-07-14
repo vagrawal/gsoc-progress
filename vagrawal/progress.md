@@ -130,3 +130,7 @@ Moved forward in packaging the code, will commit tomorrow. Also read many papers
 # 12 July
 
 Fixed many hanging pieces. Code quality is not very good now, but things seeems to work. Finally got LM to work completely, as I left it in a partially working state for quite some time. Commiting a fairly big update, which also includes many utilities for making FST in the format we need it.
+
+# 14 July
+
+There were still bugs in the LM part and I fixed them. Now it is producing possible and likely sentences. Also, Integrated LM in train. Now I am only training where there is no out of vocabulary words. Also did more modularization of the code.
