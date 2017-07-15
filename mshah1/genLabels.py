@@ -44,7 +44,7 @@ def frame2state(fname, phone2state, onlyPhone=True):
 def genDataset(DB_path, filelist, feat_path, stseg_path, mdef_fname, context_len=None):
 	global done
 	files = np.loadtxt(DB_path+filelist,dtype=str)
-	files = map(lambda x: DB_path+feat_path+x+'.mls',files)
+	files = map(lambda x: DB_path+feat_path+x+'.mfc',files)
 	
 	train_files = filter(lambda x: 'tr' in x.split('/')[-3] and
 									'wv1' == x.split('.')[-3], files)

@@ -1,15 +1,25 @@
 import os
-CUDA_VISIBLE_DEVICES = '2'
+CUDA_VISIBLE_DEVICES = '0'
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 from keras.models import Sequential, Model
-from keras.optimizers import SGD,Adagrad
+from keras.optimizers import SGD,Adagrad, Adam
 from keras.layers.normalization import BatchNormalization
-from keras.layers import Input, Dense, Activation, Dropout, Conv1D, Conv2D, MaxPooling2D, Reshape, Flatten
+from keras.layers import (
+	Input, 
+	Dense,
+	Activation, 
+	Dropout, 
+	Conv1D, 
+	Conv2D,
+	LocallyConnected2D, 
+	MaxPooling2D, 
+	Reshape, 
+	Flatten)
 from keras.layers.core import Lambda
 from keras.layers.merge import add, concatenate
 from keras.utils import to_categorical, plot_model
 from keras.models import load_model, Model
-from keras.callbacks import History,ModelCheckpoint,EarlyStopping,ReduceLROnPlateau
+from keras.callbacks import History,ModelCheckpoint,CSVLogger,ReduceLROnPlateau
 from keras import regularizers
 import keras.backend as K
 import numpy as np
@@ -30,21 +40,28 @@ from multi_gpu import make_parallel
 # mpl.rcParams['backend'] = 'agg'
 # plt = mpl.pyplot
 
-def mlp1(input_dim,output_dim,depth,width,dropout=False,BN=False, regularize=False):
+def mlp1(input_dim,output_dim,depth,width,dropout=False,
+	BN=False, regularize=False, lin_boost=False):
 	model = Sequential()
 	model.add(Dense(width, activation='sigmoid', input_dim=input_dim,
 					kernel_regularizer=regularizers.l2() if regularize else None))
 	if BN:
 		model.add(BatchNormalization())
+	if dropout:
+		model.add(Dropout(0.15))
 	for i in range(depth):
 		model.add(Dense(width, activation='sigmoid',
 						kernel_regularizer=regularizers.l2() if regularize else None))
 		if dropout:
-			model.add(Dropout(0.25))
+			model.add(Dropout(0.15))
 		if BN:
 			model.add(BatchNormalization())
-	model.add(Dense(output_dim, activation='softmax'))
-	opt = Adagrad(lr=100/(np.sqrt(input_dim * width * output_dim)))
+	if lin_boost:
+		model.add(Dense(output_dim))	
+		model.add(Lambda(lambda x: K.exp(x)))
+	else:	
+		model.add(Dense(output_dim, activation='softmax'))
+	opt = Adam(lr=20/(np.sqrt(input_dim * width * output_dim)))
 	model.compile(optimizer=opt,
 	              loss='sparse_categorical_crossentropy',
 	              metrics=['accuracy'])
@@ -91,34 +108,37 @@ def make_dense_res_block(inp, size, width, drop=False,BN=False,regularize=False)
 	x = inp
 	for i in range(size):
 		x = Dense(width,
-					kernel_regularizer=regularizers.l2() if regularize else None)(x)
-		if drop:
-			x = Dropout(0.5)(x)
+					kernel_regularizer=regularizers.l2(0.1) if regularize else None)(x)
 		if BN and i < size - 1:
 			x = _bn_relu(x)
+		if drop:
+			x = Dropout(0.15)(x)
 	return x
 
 def mlp4(input_dim,output_dim,nConv,nBlocks,width, 
 			block_width=None, dropout=False, BN=False, 
-			parallelize=False, conv=False, regularize=False):
+			parallelize=False, conv=False, regularize=False,
+			exp_boost=False, quad_boost=False):
 	if block_width == None:
 		block_width = width
 	inp = Input(shape=(input_dim,))
 	if conv:
-		x = Reshape((9,input_dim/9,1))(inp)
+		x = Reshape((11,input_dim/11,1))(inp)
 		for i in range(nConv):
 			print i
-			x = Conv2D(2**(6+i),(3,8),padding='same')(x)
+			x = LocallyConnected2D(64,(6,8),padding='valid')(x)
 			x = _bn_relu(x)
-			x = MaxPooling2D((2*(i+1),2*(i+1)),padding='same')(x)
+			x = MaxPooling2D((6,6),strides=(1,1),padding='same')(x)
 		x = Flatten()(x)
 		x = Dense(width,
-					kernel_regularizer=regularizers.l2() if regularize else None)(x)
+					kernel_regularizer=regularizers.l2(0.1) if regularize else None)(x)
 	else:
 		x = Dense(width,
-					kernel_regularizer=regularizers.l2() if regularize else None)(inp)
+					kernel_regularizer=regularizers.l2(0.1) if regularize else None)(inp)
 	if BN:
 		x = _bn_relu(x)
+	if dropout:
+		x = Dropout(0.15)(x)
 	for i in range(nBlocks):
 		y = make_dense_res_block(x,2,block_width,BN=BN,drop=dropout,regularize=regularize)
 		if block_width != width:
@@ -126,11 +146,20 @@ def mlp4(input_dim,output_dim,nConv,nBlocks,width,
 		x = add([x,y])
 		if BN:
 			x = _bn_relu(x)
-	z = Dense(output_dim, activation='softmax')(x)
+	if exp_boost:
+		x = Dense(output_dim)(x)
+		z = Lambda(lambda x : K.exp(x))(x)
+	if quad_boost:
+		x = Dense(output_dim)(x)
+		a = 0.001
+		b = 0.4
+		z = Lambda(lambda x : K.update_add(a * K.pow(x,3), b))(x)
+	else:
+		z = Dense(output_dim, activation='softmax')(x)
 	model = Model(inputs=inp, outputs=z)
 	if parallelize:
 		model = make_parallel(model, len(CUDA_VISIBLE_DEVICES.split(',')))
-	opt = Adagrad(lr=1/(np.sqrt(input_dim * width)))
+	opt = Adagrad(lr=50/(np.sqrt(input_dim * width * output_dim)))
 	# opt = SGD(lr=1/(np.sqrt(input_dim * width)), decay=1e-6, momentum=0.9, nesterov=True)
 	model.compile(optimizer=opt,
 	              loss='sparse_categorical_crossentropy',
@@ -151,18 +180,19 @@ def DBN_DNN(inp,nClasses,depth,width,batch_size=2048):
 	weights = []
 	bias = []
 	# batch_size = inp.shape
-	nEpoches = 75
-	n_batches = (inp.shape[0] / batch_size) + (1 if inp.shape[0]%batch_size != 0 else 0)
+	nEpoches = 5
 
 	sigma = np.std(inp)
 	# sigma = 1
 	rbm = GBRBM(n_visible=inp.shape[1],n_hidden=width,learning_rate=0.002, momentum=0.90, use_tqdm=True,sample_visible=True,sigma=sigma)
-	rbm.fit(inp,n_epoches=100,batch_size=batch_size,shuffle=True)
+	rbm.fit(inp,n_epoches=5,batch_size=batch_size,shuffle=True)
 	RBMs.append(rbm)
 	for i in range(depth - 1):
 		print 'training DBN layer', i
 		rbm = BBRBM(n_visible=width,n_hidden=width,learning_rate=0.02, momentum=0.90, use_tqdm=True)
 		for e in range(nEpoches):
+			batch_size *= 1 + (e*0.5)
+			n_batches = (inp.shape[0] / batch_size) + (1 if inp.shape[0]%batch_size != 0 else 0)
 			for j in range(n_batches):
 				stdout.write("\r%d batch no %d/%d epoch no %d/%d" % (int(time.time()),j+1,n_batches,e,nEpoches))
 				stdout.flush()
@@ -182,17 +212,6 @@ def DBN_DNN(inp,nClasses,depth,width,batch_size=2048):
 		W = [weights[i],bias[i]]
 		model.layers[i].set_weights(W)
 	return model
-
-def processByUtterance(data,nFrames,fn):
-	print 'processing...'
-	pos = 0
-	for i in xrange(len(nFrames)):
-		stdout.write("\rnormalizing utterance no %d " % i)
-		stdout.flush()
-		data[pos:pos + nFrames[i]] = fn(data[pos:pos + nFrames[i]])
-		pos += nFrames[i]
-	# print data
-
 
 def gen_bracketed_data(alldata,alllabels,nFrames,context_len):
 	batch_size = 512
@@ -231,27 +250,17 @@ def gen_bracketed_data(alldata,alllabels,nFrames,context_len):
 			yield (data,labels)
 			pos += nFrames[i]
 
-class TestCallback(History):
-    def __init__(self, test_data, nFrames):
-        self.test_data = test_data
-        self.nFrames = nFrames
-    def on_train_begin(self,logs=None):
-    	super(TestCallback,self).on_train_begin(logs)
-    def on_epoch_end(self, epoch, logs={}):
-        x, y = self.test_data
-        loss, acc = self.model.evaluate_generator(gen_bracketed_data(x,y,self.nFrames,4),
-										len(self.nFrames))
-        logs['eval_loss'] = loss
-        logs['eval_acc'] = acc
-        super(TestCallback,self).on_epoch_end(epoch, logs)
-        print('\nTesting loss: {}, Testing acc: {}\n'.format(loss, acc))
+		
 
-
-def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],train_layer_0=False):
+def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],outEqIn=False):
 	print model.summary()
 	layers = model.layers
 	output = layers[-1]
-	outdim = output.output_shape[1]
+	if outEqIn:
+		y_train = x_train
+		outdim = x_train.shape[1]
+	else:
+		outdim = output.output_shape[1]
 	for i in range(len(layers) - 1):
 		if i in skip_layers:
 			print 'skipping layer ',i
@@ -260,13 +269,16 @@ def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],train_layer_0=F
 			print 'skipping layer ',i
 			continue
 		last = model.layers[i].get_output_at(-1)
-		preds = Dense(outdim,activation='softmax')(last)
+		if outEqIn:
+			preds = Dense(outdim)(last)
+		else:
+			preds = Dense(outdim,activation='softmax')(last)
 		model_new = Model(model.input,preds)
 		for j in range(len(model_new.layers) - 2):
 			print "untrainable layer ",j
 			model_new.layers[j].trainable=False
 		model_new.compile(optimizer='adagrad',
-	              loss='sparse_categorical_crossentropy',
+	              loss='mean_squared_error' if outEqIn else 'sparse_categorical_crossentropy',
 	              metrics=['accuracy'])
 		print model_new.summary()
 		model_new.fit(x_train,y_train,epochs=1,batch_size=256)
@@ -279,27 +291,19 @@ def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],train_layer_0=F
 	return model
 
 def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,testOnly=False,pretrain=False,init_epoch=0):
-
-	# model = mlp4(20, 132,2,2048)
-	# print model.summary()
-	# plot_model(model, to_file='mlp4_model.png')
-	# model = trainDBN_DNN('wsj0_phonelabels_bracketed.npz',4,512)
-
-	# print 'normalizing the data...'
-	# scaler = StandardScaler(copy=False)
-	# scaler.fit(x_train)
-	# x_train = scaler.transform(x_train)
+	print 'TRAINING MODEL:',modelName
 	if not testOnly:
 		if pretrain:
 			print 'pretraining model...'
-			model = preTrain(model,modelName,x_train,y_train,meta)
+			model = preTrain(model,modelName,x_train,x_train,meta)
 		print model.summary()
 		print 'starting fit...'
 
-		history = model.fit(x_train,y_train,epochs=75,batch_size=2048,
+		history = model.fit(x_train,y_train,epochs=100,batch_size=512,
 							validation_data=(x_test,y_test),
 							callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,save_best_only=True,verbose=1),
-										ReduceLROnPlateau(patience=5,min_lr=10*(-6), verbose=1)])
+										ReduceLROnPlateau(patience=5,factor=0.5,min_lr=10**(-6), verbose=1),
+										CSVLogger(modelName+'.csv')])
 		# EarlyStopping(monitor='val_acc',min_delta=0.25,patience=1,mode='max')
 		# history = model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
 		# 								steps_per_epoch=len(meta['framePos_Train']), epochs=30,
@@ -308,17 +312,24 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,testOnly=False
 		# 								callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,mode='min')])
 		print 'saving model...'
 		model.save(modelName+'.h5')
-		model.save_weights(modelName+'_W.h5')
+		# model.save_weights(modelName+'_W.h5')
 		print(history.history.keys())
-
+		print history.history['lr']
 		print 'plotting graphs...'
 		# summarize history for accuracy
-		plt.plot(history.history['acc'])
-		plt.plot(history.history['val_acc'])
-		plt.title('model accuracy')
-		plt.ylabel('accuracy')
-		plt.xlabel('epoch')
-		plt.legend(['training acc', 'testing acc'])
+		fig, ax1 = plt.subplots()
+		ax1.plot(history.history['acc'])
+		ax1.plot(history.history['val_acc'])
+		ax2 = ax1.twinx()
+		ax2.plot(history.history['loss'],color='r')
+		ax2.plot(history.history['val_loss'],color='g')
+		plt.title('model loss & accuracy')
+		ax1.set_ylabel('accuracy')
+		ax2.set_ylabel('loss')
+		ax1.set_xlabel('epoch')
+		ax1.legend(['training acc', 'testing acc'])
+		ax2.legend(['training loss', 'testing loss'])
+		fig.tight_layout()
 		plt.savefig(modelName+'.png')
 		plt.clf()
 	else:
@@ -327,6 +338,30 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,testOnly=False
 		score = model.evaluate_generator(gen_bracketed_data(x_test,y_test,meta['framePos_Dev'],4),
 										len(meta['framePos_Dev']))
 		print score
+
+def plotFromCSV(modelName):
+	data = np.loadtxt(modelName+'.csv',skiprows=1,delimiter=',')
+	epoch = data[:,[0]]
+	acc = data[:,[1]]
+	loss = data[:,[2]]
+	val_acc = data[:,[4]]
+	val_loss = data[:,[5]]
+
+	fig, ax1 = plt.subplots()
+	ax1.plot(acc)
+	ax1.plot(val_acc)
+	ax2 = ax1.twinx()
+	ax2.plot(loss,color='r')
+	ax2.plot(val_loss,color='g')
+	plt.title('model loss & accuracy')
+	ax1.set_ylabel('accuracy')
+	ax2.set_ylabel('loss')
+	ax1.set_xlabel('epoch')
+	ax1.legend(['training acc', 'testing acc'])
+	ax2.legend(['training loss', 'testing loss'])
+	fig.tight_layout()
+	plt.savefig(modelName+'.png')
+	plt.clf()
 
 def writeSenScores(filename,scores,freqs):
 	n_active = scores.shape[1]
@@ -396,6 +431,7 @@ def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,freqs,context_len=
 			os.makedirs(dirname)
 		writeSenScores(res_file_path,preds,freqs)
 
+print 'PROCESS-ID =', os.getpid()
 print 'loading data...'
 meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
 x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
@@ -403,7 +439,7 @@ y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
 # end = x_train.shape[0] % 2048
 # x_train = x_train[:-end]
 # y_train = y_train[:-end]
-nClasses = np.max(y_train) + 1
+nClasses = 4138
 print nClasses
 # print 'transforming labels...'
 # y_train = to_categorical(y_train, num_classes = nClasses)
@@ -421,12 +457,11 @@ y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
 
 print 'initializing model...'
 # model = load_model('dbn-3x2048-sig-adagrad_CP.h5')
-# model = mlp4(x_train.shape[1], nClasses,3,10,2048,BN=True,conv=False,dropout=False,regularize=True)
-model = mlp1(x_train.shape[1], nClasses,1,5120,BN=True,regularize=False)
+# model = mlp4(x_train.shape[1], nClasses,1,1,5120,BN=True,conv=True,dropout=False,regularize=False,quad_boost=False)
+# model = mlp1(x_train.shape[1], nClasses,0,5120,BN=True,regularize=False,lin_boost=True)
 # model = load_model('test_CP.h5')
-# model = DBN_DNN(x_train, nClasses,5,2048,batch_size=128)
-# # model = resnet_wrapper(x_train.shape[1], nClasses)
-trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp1-2x5120-adagrad-BN-cd')
+model = DBN_DNN(x_train, nClasses,5,2560,batch_size=128)
+trainNtest(model,x_train,y_train,x_test,y_test,meta,'dbn-5x2560-sig-adam')
 
 
 # model = load_model('mlp1-3x2048-sig-adagrad-cd.h5')
@@ -442,3 +477,5 @@ trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp1-2x5120-adagrad-BN-cd')
 # # print pred
 # # writeSenScores('senScores',pred)
 # np.save('pred.npy',np.log(pred)/np.log(1.001))
+
+# plotFromCSV('mlp1-1x5120-adagrad-cd')
