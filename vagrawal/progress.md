@@ -134,3 +134,7 @@ Fixed many hanging pieces. Code quality is not very good now, but things seeems 
 # 14 July
 
 There were still bugs in the LM part and I fixed them. Now it is producing possible and likely sentences. Also, Integrated LM in train. Now I am only training where there is no out of vocabulary words. Also did more modularization of the code.
+
+# 15 July
+
+Read and thought about many things regarding what we can do in CTC. Also started a small parallel CTC code. Will commit later.
