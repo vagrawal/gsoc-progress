@@ -138,3 +138,7 @@ There were still bugs in the LM part and I fixed them. Now it is producing possi
 # 15 July
 
 Read and thought about many things regarding what we can do in CTC. Also started a small parallel CTC code. Will commit later.
+
+# 16 July
+
+Ran experiments with my code. Unfortunately, the network didn't seem to learn anything for now. Spent time finding bugs. I will need some more time to see what is wrong.
