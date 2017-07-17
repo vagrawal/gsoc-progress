@@ -66,7 +66,6 @@ def training_decoding_layer(
     dec_cell = tf.contrib.seq2seq.AttentionWrapper(
             dec_cell,
             attn_mech,
-            rnn_size,
             output_attention=False)
 
     dec_cell = LMCellWrapper(dec_cell, LMfst, 5)
@@ -126,7 +125,6 @@ def inference_decoding_layer(
     dec_cell = tf.contrib.seq2seq.AttentionWrapper(
             dec_cell,
             attn_mech,
-            rnn_size,
             output_attention=False)
     dec_cell = LMCellWrapper(dec_cell, LMfst, 5)
 
@@ -191,10 +189,14 @@ def seq2seq_model(
                 lstm,
                 input_keep_prob=keep_prob)
         out_cell = tf.contrib.rnn.LSTMCell(
-                vocab_size,
+                rnn_size,
+                num_proj=vocab_size,
                 initializer=tf.random_uniform_initializer(-0.1, 0.1, seed=2))
+        out_cell = tf.contrib.rnn.DropoutWrapper(
+                out_cell,
+                input_keep_prob=keep_prob)
         dec_cell = tf.contrib.rnn.MultiRNNCell(
-                [dec_cell_inp] + [dec_cell] * (num_layers - 1) + [out_cell])
+                [dec_cell_inp] + [dec_cell] * (num_layers - 2) + [out_cell])
 
     with tf.variable_scope("decode"):
         training_logits = training_decoding_layer(

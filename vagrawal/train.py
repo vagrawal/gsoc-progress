@@ -8,10 +8,12 @@ from vocab import vocab
 import time
 import argparse
 from fst import fstCosts
+from utils import FileOpen, wer
+import pywrapfst as fst
 
 def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, nfilt,
-        sess, coord, outputs, output_lengths,
-        batch_i, cost, keep_prob_tensor, mean_speaker, var_speaker,
+        outputs, output_lengths,
+        step, cost, keep_prob_tensor, mean_speaker, var_speaker,
         best_n_inference, pred_scores, LMfst):
 
     tf.logging.info("Evaluation started")
@@ -48,7 +50,7 @@ def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, nfilt,
                             pred_out = ''.join([vocab[l] for l in pred[i, :, j]])
                             pred_out = pred_out.split('<')[0]
                             cur_wer = wer(real_out.split(), pred_out.split())
-                            tf.logging.info("{} : {}".format(pred_out, sc[i, j]))
+                            # tf.logging.info("{} : {}".format(pred_out, sc[i, j]))
                             best_wer = min(best_wer, cur_wer)
                             best_cer = min(best_cer, wer(list(real_out), list(pred_out)))
                         tot_wer += best_wer
@@ -60,7 +62,7 @@ def run_eval(graph, job_dir, checkpoint, queue, predictions, data_dir, nfilt,
                  tf.Summary.Value(tag="CER_valid", simple_value=tot_cer / tot_ev),
                  tf.Summary.Value(tag="loss_valid", simple_value=batch_loss / tot_bat)
                 ])
-            writer.add_summary(summary, global_step=batch_i)
+            writer.add_summary(summary, global_step=sess.run(step))
             writer.flush()
             coord.request_stop()
     tf.logging.info("Evaluation finished")
@@ -130,8 +132,18 @@ def train(
         batch_loss = 0.0
 
         mean_speaker, var_speaker = get_speaker_stats(data_dir, nfilt, sets)
+	tf.logging.info('Starting training')
 
         for epoch_i in range(1, num_epochs + 1):
+            if (checkpoint_path is not None):
+                run_eval(graph, job_dir, checkpoint_path, queue, predictions, data_dir,
+                        nfilt, outputs,
+                        output_lengths, step, cost, keep_prob_tensor,
+                        mean_speaker, var_speaker, best_n_inference,
+                        pred_scores, LMfst)
+                if (eval_only):
+                    coord.request_stop()
+                    return
             tf.Session.reset(None, ['queue'])
             with tf.Session() as sess:
                 coord = tf.train.Coordinator(
@@ -143,19 +155,9 @@ def train(
                     sess.run(tf.local_variables_initializer())
                 else:
                     saver.restore(sess, checkpoint_path)
-                    batch_i = sess.run(step)
-                    run_eval(graph, job_dir, checkpoint_path, queue, predictions, data_dir,
-                            nfilt, sess, coord, outputs,
-                            output_lengths, batch_i, cost, keep_prob_tensor,
-                            mean_speaker, var_speaker, best_n_inference,
-                            pred_scores, LMfst)
-                    if (eval_only):
-                        coord.request_stop()
-                        return
 
                 read_data_queue('si_tr_s', queue, data_dir, nfilt,
-                        sess, None, None, LMfst)
-                        sess, mean_speaker, var_speaker)
+                        sess, mean_speaker, var_speaker, LMfst)
 
                 with coord.stop_on_exception():
                     while not coord.should_stop():
@@ -165,7 +167,6 @@ def train(
                                 [cost, train_op, step],
                                 feed_dict={learning_rate_tensor: learning_rate,
                                     keep_prob_tensor: keep_prob})
-                        print("Loss: ", loss)
 
                         batch_loss += loss
                         end_time = time.time()
