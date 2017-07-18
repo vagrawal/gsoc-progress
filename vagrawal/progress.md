@@ -134,3 +134,21 @@ Fixed many hanging pieces. Code quality is not very good now, but things seeems 
 # 14 July
 
 There were still bugs in the LM part and I fixed them. Now it is producing possible and likely sentences. Also, Integrated LM in train. Now I am only training where there is no out of vocabulary words. Also did more modularization of the code.
+
+# 15 July
+
+Read and thought about many things regarding what we can do in CTC. Also started a small parallel CTC code. Will commit later.
+
+# 16 July
+
+Ran experiments with my code. Unfortunately, the network didn't seem to learn anything for now. Spent time finding bugs. I will need some more time to see what is wrong.
+
+# 17 July
+
+Another frustrating day spent in hunting for the bug. It required changing slowly from the confirmed code that can be trained to current. As it requires half an hour or so to see if there is any training beyond just the very basic, it takes so long to look for a bug.
+
+But at least, I found two bugs and I can see the training can progress to much better point than before. Hopefully, I can completely train the model to at least accuracy acheived by previous code. I think then there is much scope to improve.
+
+Earlier, I removed a dense layer which sits on top of decoding layer and replaced it with another LSTM with vocab size as output size as I needed to put LM on top of it. Unfortunately, I forgot that the output of LSTM has a finite range of pi. Hence, it was making training much more difficult as the lowest and the highest output probabilty can be in maximum certain ratio. Also, the attention with default parameters does not do what I thought it does. By default it does much more trickery than I was planning. It was wrong in my previous code too, but it worked. Still, I changed that too.
+
+I am hopeful that by tomorrow I will have a good result from the current model.

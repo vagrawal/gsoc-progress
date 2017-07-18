@@ -1,6 +1,5 @@
 import numpy as np
 from python_speech_features.base import fbank, delta
-import scipy.io.wavfile
 import tensorflow as tf
 import threading
 import random
@@ -8,9 +7,10 @@ from fst import in_fst
 from vocab import vocab_to_int
 from utils import FileOpen
 import pywrapfst as fst
+import soundfile as sf
 
 def get_features(file, nfilt):
-    sample_rate, signal = scipy.io.wavfile.read(FileOpen(file))
+    signal, sample_rate= sf.read(file + '.flac')
     feat, energy = fbank(signal, sample_rate, nfilt=nfilt)
     feat = np.log(feat)
     dfeat = delta(feat, 2)
