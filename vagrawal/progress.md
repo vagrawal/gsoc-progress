@@ -152,3 +152,7 @@ But at least, I found two bugs and I can see the training can progress to much b
 Earlier, I removed a dense layer which sits on top of decoding layer and replaced it with another LSTM with vocab size as output size as I needed to put LM on top of it. Unfortunately, I forgot that the output of LSTM has a finite range of pi. Hence, it was making training much more difficult as the lowest and the highest output probabilty can be in maximum certain ratio. Also, the attention with default parameters does not do what I thought it does. By default it does much more trickery than I was planning. It was wrong in my previous code too, but it worked. Still, I changed that too.
 
 I am hopeful that by tomorrow I will have a good result from the current model.
+
+# 18 July
+
+Still unable to get the model to train. It does not seems to be due to bugs in the code but I suspect the attention mechanism used initially enabled it to train faster. The model is still being trained and there is still chance that I could get a good accuracy.
