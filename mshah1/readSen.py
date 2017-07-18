@@ -26,22 +26,26 @@ def readSen(fname, print_most_prob_sen=False):
 		# print np.argmax(scores)
 		count += 1
 		data += scores
+	print count
 	return np.array(data)
 
 # readSen('../wsj/wsj0/senscores/11_14_1/wsj0/si_et_20/440/440c0401.wv1.flac.sen')
-ndx_list = map(lambda x: '../wsj/wsj0/senscores_dev/'+x+'.sen', np.loadtxt('../wsj/wsj0/etc/wsj0_dev.fileids',dtype=str))
-file_list = map(lambda x: '../wsj/wsj0/sendump_dev_ci/' + x, os.listdir('../wsj/wsj0/sendump_dev_ci/'))
+ndx_list = map(lambda x: '../wsj/wsj0/senscores_dev_cd/'+x+'.sen', np.loadtxt('../wsj/wsj0/etc/wsj0_dev.fileids',dtype=str))
+file_list = map(lambda x: '../wsj/wsj0/sendump_dev_cd/' + x, os.listdir('../wsj/wsj0/sendump_dev_ci/'))
 file_list.sort()
 file_list = file_list[:-1]
 ndx_list = ['../wsj/wsj0/single_dev_NN/11_14_1/wsj0/si_et_20/445/445c0403.wv1.flac.sen']
 file_list = ['../wsj/wsj0/single_dev/11_14_1/wsj0/si_et_20/445/445c0403.wv1.flac.sen']
 x = []
 y = []
-for i in range(len(file_list)):
+for i in range(len(file_list[:1])):
 	if i >= 0:
 		print i,ndx_list[i], file_list[i]
 		y += list(readSen(ndx_list[i]))
 		x += list(readSen(file_list[i]))
+		frame_len = min(len(x),len(y))
+		# x = x[:frame_len]
+		# y = y[:frame_len]
 		print len(x),len(y), len(x)/4138, len(y)/4138
 		assert len(x) == len(y)
 	else:
@@ -58,3 +62,7 @@ data = np.load('data4regression.npy')
 lreg = LinearRegression(normalize=True,n_jobs=-1)
 lreg.fit(data[:,[1]],data[:,[0]])
 print lreg.coef_, lreg.intercept_
+
+# vs = np.std(data[:,[1]])
+# va = np.std(data[:,[0]])
+# print va/vs

@@ -1,5 +1,5 @@
 import os
-CUDA_VISIBLE_DEVICES = '0'
+CUDA_VISIBLE_DEVICES = '1'
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 from keras.models import Sequential, Model
 from keras.optimizers import SGD,Adagrad, Adam
@@ -35,6 +35,7 @@ import threading
 import struct
 import resnet
 from multi_gpu import make_parallel
+import pylab as pl
 # import matplotlib as mpl
 # print mpl.matplotlib_fname()
 # mpl.rcParams['backend'] = 'agg'
@@ -42,16 +43,17 @@ from multi_gpu import make_parallel
 
 def mlp1(input_dim,output_dim,depth,width,dropout=False,
 	BN=False, regularize=False, lin_boost=False):
+	print locals()
 	model = Sequential()
 	model.add(Dense(width, activation='sigmoid', input_dim=input_dim,
-					kernel_regularizer=regularizers.l2() if regularize else None))
+					kernel_regularizer=regularizers.l2(0.05) if regularize else None))
 	if BN:
 		model.add(BatchNormalization())
 	if dropout:
 		model.add(Dropout(0.15))
 	for i in range(depth):
 		model.add(Dense(width, activation='sigmoid',
-						kernel_regularizer=regularizers.l2() if regularize else None))
+						kernel_regularizer=regularizers.l2(0.05) if regularize else None))
 		if dropout:
 			model.add(Dropout(0.15))
 		if BN:
@@ -61,7 +63,7 @@ def mlp1(input_dim,output_dim,depth,width,dropout=False,
 		model.add(Lambda(lambda x: K.exp(x)))
 	else:	
 		model.add(Dense(output_dim, activation='softmax'))
-	opt = Adam(lr=20/(np.sqrt(input_dim * width * output_dim)))
+	opt = Adam(lr=10/(np.sqrt(input_dim * width * output_dim)))
 	model.compile(optimizer=opt,
 	              loss='sparse_categorical_crossentropy',
 	              metrics=['accuracy'])
@@ -108,17 +110,19 @@ def make_dense_res_block(inp, size, width, drop=False,BN=False,regularize=False)
 	x = inp
 	for i in range(size):
 		x = Dense(width,
-					kernel_regularizer=regularizers.l2(0.1) if regularize else None)(x)
-		if BN and i < size - 1:
-			x = _bn_relu(x)
-		if drop:
-			x = Dropout(0.15)(x)
+					kernel_regularizer=regularizers.l2(0.05) if regularize else None)(x)
+		if i < size - 1:
+			if drop:
+				x = Dropout(0.15)(x)
+			if BN:
+				x = _bn_relu(x)			
 	return x
 
-def mlp4(input_dim,output_dim,nConv,nBlocks,width, 
+def mlp4(input_dim,output_dim,nConv,nBlocks,width, block_depth=2, 
 			block_width=None, dropout=False, BN=False, 
 			parallelize=False, conv=False, regularize=False,
-			exp_boost=False, quad_boost=False):
+			exp_boost=False, quad_boost=False, shortcut=True):
+	print locals()
 	if block_width == None:
 		block_width = width
 	inp = Input(shape=(input_dim,))
@@ -126,26 +130,32 @@ def mlp4(input_dim,output_dim,nConv,nBlocks,width,
 		x = Reshape((11,input_dim/11,1))(inp)
 		for i in range(nConv):
 			print i
-			x = LocallyConnected2D(64,(6,8),padding='valid')(x)
+			x = LocallyConnected2D(84,(8,8),padding='valid')(x)
 			x = _bn_relu(x)
-			x = MaxPooling2D((6,6),strides=(1,1),padding='same')(x)
+			x = MaxPooling2D((6,6),strides=(2,2),padding='same')(x)
 		x = Flatten()(x)
 		x = Dense(width,
-					kernel_regularizer=regularizers.l2(0.1) if regularize else None)(x)
+					kernel_regularizer=regularizers.l2(0.05) if regularize else None)(x)
 	else:
 		x = Dense(width,
-					kernel_regularizer=regularizers.l2(0.1) if regularize else None)(inp)
-	if BN:
-		x = _bn_relu(x)
+					kernel_regularizer=regularizers.l2(0.05) if regularize else None)(inp)
 	if dropout:
 		x = Dropout(0.15)(x)
+	if BN:
+		x = _bn_relu(x)
+	if block_width != width:
+		x = Dense(block_width)(x)
 	for i in range(nBlocks):
-		y = make_dense_res_block(x,2,block_width,BN=BN,drop=dropout,regularize=regularize)
-		if block_width != width:
-			y = Dense(width)(x)
-		x = add([x,y])
+		y = make_dense_res_block(x,block_depth,block_width,BN=BN,drop=dropout,regularize=regularize)
+		if shortcut:
+			x = add([x,y])
+		else:
+			x = y
+		if dropout:
+			x = Dropout(0.15)(x)
 		if BN:
 			x = _bn_relu(x)
+
 	if exp_boost:
 		x = Dense(output_dim)(x)
 		z = Lambda(lambda x : K.exp(x))(x)
@@ -153,13 +163,13 @@ def mlp4(input_dim,output_dim,nConv,nBlocks,width,
 		x = Dense(output_dim)(x)
 		a = 0.001
 		b = 0.4
-		z = Lambda(lambda x : K.update_add(a * K.pow(x,3), b))(x)
+		z = Lambda(lambda x : a * K.pow(x,3) + b)(x)
 	else:
 		z = Dense(output_dim, activation='softmax')(x)
 	model = Model(inputs=inp, outputs=z)
 	if parallelize:
 		model = make_parallel(model, len(CUDA_VISIBLE_DEVICES.split(',')))
-	opt = Adagrad(lr=50/(np.sqrt(input_dim * width * output_dim)))
+	opt = Adam(lr=25/(np.sqrt(input_dim * width * output_dim)))
 	# opt = SGD(lr=1/(np.sqrt(input_dim * width)), decay=1e-6, momentum=0.9, nesterov=True)
 	model.compile(optimizer=opt,
 	              loss='sparse_categorical_crossentropy',
@@ -213,7 +223,23 @@ def DBN_DNN(inp,nClasses,depth,width,batch_size=2048):
 		model.layers[i].set_weights(W)
 	return model
 
-def gen_bracketed_data(alldata,alllabels,nFrames,context_len):
+def gen_data(alldata,alllabels,batch_size):
+	n_batches = (alldata.shape[0] / batch_size) + (1 if alldata.shape[0]%batch_size != 0 else 0)
+	# nClasses = np.max(alllabels) + 1
+	nClasses = 4138
+	while 1:
+		idxs = range(alldata.shape[0])
+		np.random.shuffle(idxs)
+		for j in range(n_batches):
+			idx = idxs[j*batch_size:min((j+1)*batch_size, len(idxs))]
+			data = np.array(map(lambda x: alldata[x],idx))
+			labels = np.array(map(lambda x: alllabels[x],idx))
+			if len(labels.shape) == 1:
+				labels = to_categorical(labels,num_classes=nClasses)
+			
+			yield (data,labels)
+
+def gen_bracketed_data(alldata,alllabels,nFrames,context_len=None):
 	batch_size = 512
 	while 1:
 		pos = 0
@@ -224,17 +250,18 @@ def gen_bracketed_data(alldata,alllabels,nFrames,context_len):
 
 			if len(labels.shape) == 1:
 				labels = to_categorical(labels,num_classes=nClasses)
-			pad_top = np.zeros((context_len,data.shape[1]))
-			pad_bot = np.zeros((context_len,data.shape[1]))
-			padded_data = np.concatenate((pad_top,data),axis=0)
-			padded_data = np.concatenate((padded_data,pad_bot),axis=0)
+			if context_len != None:
+				pad_top = np.zeros((context_len,data.shape[1]))
+				pad_bot = np.zeros((context_len,data.shape[1]))
+				padded_data = np.concatenate((pad_top,data),axis=0)
+				padded_data = np.concatenate((padded_data,pad_bot),axis=0)
 
-			data = []
-			for j in range(context_len,len(padded_data) - context_len):
-				new_row = padded_data[j - context_len: j + context_len + 1]
-				new_row = new_row.flatten()
-				data.append(new_row)
-			data = np.array(data)
+				data = []
+				for j in range(context_len,len(padded_data) - context_len):
+					new_row = padded_data[j - context_len: j + context_len + 1]
+					new_row = new_row.flatten()
+					data.append(new_row)
+				data = np.array(data)
 			# if data.shape[0] < batch_size:
 			# 	pad_bot = np.zeros((batch_size-data.shape[0],data.shape[1])) + data[-1]
 			# 	data = np.concatenate((data,pad_bot),axis=0)
@@ -256,11 +283,7 @@ def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],outEqIn=False):
 	print model.summary()
 	layers = model.layers
 	output = layers[-1]
-	if outEqIn:
-		y_train = x_train
-		outdim = x_train.shape[1]
-	else:
-		outdim = output.output_shape[1]
+	outdim = output.output_shape[1]
 	for i in range(len(layers) - 1):
 		if i in skip_layers:
 			print 'skipping layer ',i
@@ -277,39 +300,53 @@ def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],outEqIn=False):
 		for j in range(len(model_new.layers) - 2):
 			print "untrainable layer ",j
 			model_new.layers[j].trainable=False
-		model_new.compile(optimizer='adagrad',
-	              loss='mean_squared_error' if outEqIn else 'sparse_categorical_crossentropy',
+		model_new.compile(optimizer='adam',
+	              loss='sparse_categorical_crossentropy',
 	              metrics=['accuracy'])
 		print model_new.summary()
-		model_new.fit(x_train,y_train,epochs=1,batch_size=256)
+		batch_size = 2048
+		model_new.fit(x_train,y_train,epochs=1,batch_size=2048)
 		# model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
 		# 								steps_per_epoch=len(meta['framePos_Train']), epochs=3,
 		# 								callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,monitor='loss',mode='min')])
+		# model.fit_generator(gen_data(x_train,y_train,batch_size),
+		# 					steps_per_epoch = x_train.shape[0] / batch_size,
+		# 					epochs = 1)
 		model.layers[i].set_weights(model_new.layers[-2].get_weights())
 	for l in model.layers:
 		l.trainable = True
 	return model
 
-def trainNtest(model,x_train,y_train,x_test,y_test,meta,modelName,testOnly=False,pretrain=False,init_epoch=0):
+def trainNtest(model,x_train,y_train,x_test,y_test,meta,
+				modelName,testOnly=False,pretrain=False,
+				init_epoch=0):
 	print 'TRAINING MODEL:',modelName
 	if not testOnly:
 		if pretrain:
 			print 'pretraining model...'
-			model = preTrain(model,modelName,x_train,x_train,meta)
+			model = preTrain(model,modelName,x_train,y_train,meta)
 		print model.summary()
 		print 'starting fit...'
-
-		history = model.fit(x_train,y_train,epochs=100,batch_size=512,
+		callback_arr = [ModelCheckpoint('%s_CP.h5' % modelName,save_best_only=True,verbose=1),
+						ReduceLROnPlateau(patience=5,factor=0.5,min_lr=10**(-6), verbose=1),
+						CSVLogger(modelName+'.csv',append=True)]
+		batch_size = 512
+		history = model.fit(x_train,y_train,epochs=100,batch_size=batch_size,
+							initial_epoch=init_epoch,
 							validation_data=(x_test,y_test),
-							callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,save_best_only=True,verbose=1),
-										ReduceLROnPlateau(patience=5,factor=0.5,min_lr=10**(-6), verbose=1),
-										CSVLogger(modelName+'.csv')])
+							callbacks=callback_arr)
 		# EarlyStopping(monitor='val_acc',min_delta=0.25,patience=1,mode='max')
-		# history = model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train'],4),
+		# history = model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train']),
 		# 								steps_per_epoch=len(meta['framePos_Train']), epochs=30,
-		# 								validation_data=gen_bracketed_data(x_test,y_test,meta['framePos_Dev'],4),
+		# 								validation_data=gen_bracketed_data(x_test,y_test,meta['framePos_Dev']),
 		# 								validation_steps = len(meta['framePos_Dev']),
-		# 								callbacks=[ModelCheckpoint('%s_CP.h5' % modelName,mode='min')])
+		# 								callbacks=callback_arr)
+		# model.fit_generator(gen_data(x_train,y_train,batch_size),
+		# 					steps_per_epoch = x_train.shape[0] / batch_size,
+		# 					epochs = 75,
+		# 					validation_data = gen_data(x_test,y_test,batch_size),
+		# 					validation_steps = x_test.shape[0] / batch_size,
+		# 					callbacks=callback_arr)
 		print 'saving model...'
 		model.save(modelName+'.h5')
 		# model.save_weights(modelName+'_W.h5')
@@ -363,7 +400,7 @@ def plotFromCSV(modelName):
 	plt.savefig(modelName+'.png')
 	plt.clf()
 
-def writeSenScores(filename,scores,freqs):
+def writeSenScores(filename,scores,freqs,weight,offset):
 	n_active = scores.shape[1]
 	s = ''
 	s = """s3
@@ -380,14 +417,14 @@ endhdr
 	scores *= -1
 	scores -= np.min(scores,axis=1).reshape(-1,1)
 	# scores = scores.astype(int)
-	scores *= 0.1 * 0.00282001
-	scores += 271.10506735
+	scores *= 0.1 * weight
+	scores += offset
 	truncateToShort = lambda x: 32676 if x > 32767 else (-32768 if x < -32768 else x)
 	vf = np.vectorize(truncateToShort)
 	scores = vf(scores)
 	# scores /= np.sum(scores,axis=0)
 	for r in scores:
-		print np.argmin(r)
+		# print np.argmin(r)
 		s += struct.pack('h',n_active)
 		r_str = struct.pack('%sh' % len(r), *r)
 		# r_str = reduce(lambda x,y: x+y,r_str)
@@ -395,7 +432,25 @@ endhdr
 	with open(filename,'w') as f:
 		f.write(s)
 
-def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,freqs,context_len=4):
+def getPredsFromArray(model,data,nFrames,filenames,res_dir,res_ext,freqs):
+	preds = model.predict(data,verbose=1,batch_size=2048)
+	pos = 0
+	for i in range(len(nFrames)):
+		fname = filenames[i][:-4]
+		fname = reduce(lambda x,y: x+'/'+y,fname.split('/')[4:])
+		stdout.write("\r%d/%d 	" % (i,len(filenames)))
+		stdout.flush()
+		res_file_path = res_dir+fname+res_ext
+		dirname = os.path.dirname(res_file_path)
+		if not os.path.exists(dirname):
+			os.makedirs(dirname)
+		# preds = model.predict(data[pos:pos+nFrames[i]],batch_size=nFrames[i])
+		writeSenScores(res_file_path,preds[pos:pos+nFrames[i]],freqs)
+		pos += nFrames[i]
+
+def getPredsFromFilelist(model,filelist,file_dir,file_ext,
+							res_dir,res_ext,freqs,context_len=4,
+							weight=1,offset=0):
 	with open(filelist) as f:
 		files = f.readlines()
 		files = map(lambda x: x.strip(),files)
@@ -406,7 +461,6 @@ def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,freqs,context_len=
 		stdout.flush()
 
 		f = filepaths[i]
-
 		if not os.path.exists(f):
 			print "\n",f
 			continue
@@ -424,58 +478,62 @@ def getPreds(model,filelist,file_dir,file_ext,res_dir,res_ext,freqs,context_len=
 			new_row = new_row.flatten()
 			data.append(new_row)
 		data = np.array(data)
-		preds = model.predict(data)
+		preds = model.predict(data,batch_size=data.shape[0])
+		
 		res_file_path = res_dir+files[i]+res_ext
 		dirname = os.path.dirname(res_file_path)
 		if not os.path.exists(dirname):
 			os.makedirs(dirname)
-		writeSenScores(res_file_path,preds,freqs)
+		writeSenScores(res_file_path,preds,freqs,weight,offset)
 
-print 'PROCESS-ID =', os.getpid()
-print 'loading data...'
-meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
-x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
-y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
-# end = x_train.shape[0] % 2048
-# x_train = x_train[:-end]
-# y_train = y_train[:-end]
-nClasses = 4138
-print nClasses
-# print 'transforming labels...'
-# y_train = to_categorical(y_train, num_classes = nClasses)
+if __name__ == '__main__':
+	print 'PROCESS-ID =', os.getpid()
+	print 'loading data...'
+	meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
+	x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
+	y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
+	# end = x_train.shape[0] % 2048
+	# x_train = x_train[:-end]
+	# y_train = y_train[:-end]
+	nClasses = 4138
+	print nClasses
+	# print 'transforming labels...'
+	# y_train = to_categorical(y_train, num_classes = nClasses)
 
-print 'loading test data...'
-x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
-y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
-# # # end = x_test.shape[0] % 2048
-# # # x_test = x_test[:-end]
-# # # y_test = y_test[:-end]
-# # # x_test = x_train
-# # # y_test = y_train
-# print 'transforming labels...'
-# y_test = to_categorical(y_test, num_classes = nClasses)
+	print 'loading test data...'
+	x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
+	y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
+	# # # end = x_test.shape[0] % 2048
+	# # # x_test = x_test[:-end]
+	# # # y_test = y_test[:-end]
+	# # # x_test = x_train
+	# # # y_test = y_train
+	# print 'transforming labels...'
+	# y_test = to_categorical(y_test, num_classes = nClasses)
 
-print 'initializing model...'
-# model = load_model('dbn-3x2048-sig-adagrad_CP.h5')
-# model = mlp4(x_train.shape[1], nClasses,1,1,5120,BN=True,conv=True,dropout=False,regularize=False,quad_boost=False)
-# model = mlp1(x_train.shape[1], nClasses,0,5120,BN=True,regularize=False,lin_boost=True)
-# model = load_model('test_CP.h5')
-model = DBN_DNN(x_train, nClasses,5,2560,batch_size=128)
-trainNtest(model,x_train,y_train,x_test,y_test,meta,'dbn-5x2560-sig-adam')
+	print 'initializing model...'
+	# model = load_model('dbn-3x2048-sig-adagrad_CP.h5')
+	model = mlp4(x_train.shape[1], nClasses,1,2,2560,shortcut=False,BN=True,conv=True,dropout=True,regularize=False)
+	# model = mlp1(x_train.shape[1], nClasses,4,2560,BN=True,regularize=False,lin_boost=False)
+	# model = load_model('test_CP.h5')
+	# model = DBN_DNN(x_train, nClasses,5,2560,batch_size=128)
+	# model = load_model('mlp4-2x2560-cd-adam-bn-drop-conv-noshort_CP.h5')
+	# trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-2x2560-cd-adam-bn-drop-conv-noshort',pretrain=False)
 
 
-# model = load_model('mlp1-3x2048-sig-adagrad-cd.h5')
-# getPreds(model,'../wsj/wsj0/single_dev.txt','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/single_dev_NN/','.sen',meta['state_freq_Train'])
-# getPreds(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores_dev/','.sen',meta['state_freq_Train'])
-# getPreds(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/senscores_dev_cd/','.sen',meta['state_freq_Train'])
-# f = filter(lambda x : '22go0208.wv1.flac' in x, meta['filenames_Dev'])[0]
-# file_idx = list(meta['filenames_Dev']).index(f)
-# # print file_idx
-# split = lambda x: x[sum(meta['framePos_Dev'][:file_idx]):sum(meta['framePos_Dev'][:file_idx+1])]
-# # pred = model.evaluate(split(x_test),split(y_test),verbose=1)
-# pred = model.predict(split(x_test),verbose=1)
-# # print pred
-# # writeSenScores('senScores',pred)
-# np.save('pred.npy',np.log(pred)/np.log(1.001))
+	model = load_model('bestModels/best_CD.h5')
+	# getPredsFromFilelist(model,'../wsj/wsj0/single_dev.txt','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/single_dev_NN/','.sen',meta['state_freq_Train'],context_len=5,weight=0.00035457)
+	# getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores_dev2/','.sen',meta['state_freq_Train'],weight=0.02744634)
+	getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/senscores_dev_cd/','.sen',meta['state_freq_Train'],context_len=5)
+	# getPredsFromArray(model,x_test,meta['framePos_Dev'],meta['filenames_Dev'],'/home/mshah1/wsj/wsj0/senscores_dev_cd/','.sen',meta['state_freq_Train'])
+	# f = filter(lambda x : '22go0208.wv1.flac' in x, meta['filenames_Dev'])[0]
+	# file_idx = list(meta['filenames_Dev']).index(f)
+	# # print file_idx
+	# split = lambda x: x[sum(meta['framePos_Dev'][:file_idx]):sum(meta['framePos_Dev'][:file_idx+1])]
+	# # pred = model.evaluate(split(x_test),split(y_test),verbose=1)
+	# pred = model.predict(split(x_test),verbose=1)
+	# # print pred
+	# # writeSenScores('senScores',pred)
+	# np.save('pred.npy',np.log(pred)/np.log(1.001))
 
-# plotFromCSV('mlp1-1x5120-adagrad-cd')
+	# plotFromCSV('mlp4-2x2560-cd-adam-bn-drop-conv-noshort')
