@@ -156,3 +156,7 @@ I am hopeful that by tomorrow I will have a good result from the current model.
 # 18 July
 
 Still unable to get the model to train. It does not seems to be due to bugs in the code but I suspect the attention mechanism used initially enabled it to train faster. The model is still being trained and there is still chance that I could get a good accuracy.
+
+# 19 July
+
+Some progress in training. Now I am pretraining with just short sentences, else the model just can't seem to learn the alighnments.
