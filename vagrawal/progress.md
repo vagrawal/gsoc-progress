@@ -166,3 +166,7 @@ Some progress in training. Now I am pretraining with just short sentences, else 
 Finally crossed a respectable margin after so much effort. With very limited experiments, my inconclusive interpretation is that my model is hard to train if LM is supplied from the start of training. Maybe, it's because smaller gradient size, and can be solved by using more learning rate. So the current training was done in three steps. I also spent some time in reading my code and it's tensorflow implementation in some detail. I found the dropout used before also includes the selected previous symbol, which is not what I wanted and I fixed that. The code is running and I will report my first result with LM tomorrow.
 
 I think I will be spending next couple of days writing documentation and packaging the code. Also I will switch from wsj0 to wsj1.
+
+# 21 July
+
+Some progress in code cleanup.
