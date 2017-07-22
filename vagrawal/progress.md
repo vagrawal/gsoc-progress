@@ -170,3 +170,11 @@ I think I will be spending next couple of days writing documentation and packagi
 # 21 July
 
 Some progress in code cleanup.
+
+# 22 July
+
+Training is still running, and while the decrease in WER is slow, it is consistent.
+
+I spent some time unsuccessfully trying to use previously trained model with LM to get one good result with LM(or dictionary) as instructed. There were problems with variable names and character vocabulary.
+
+I started writing documentation and the equations for the decoding and LM aspect of the model. It will be the first thing I will finish tomorrow.
