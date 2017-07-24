@@ -34,8 +34,7 @@ from guppy import hpy
 import threading
 import struct
 import resnet
-from multi_gpu import make_parallel
-import pylab as pl
+from utils import *
 # import matplotlib as mpl
 # print mpl.matplotlib_fname()
 # mpl.rcParams['backend'] = 'agg'
@@ -221,8 +220,7 @@ def DBN_DNN(inp,nClasses,depth,width,batch_size=2048):
 	for i in range(len(weights)):
 		W = [weights[i],bias[i]]
 		model.layers[i].set_weights(W)
-	return model
-
+	re
 def gen_data(alldata,alllabels,batch_size):
 	n_batches = (alldata.shape[0] / batch_size) + (1 if alldata.shape[0]%batch_size != 0 else 0)
 	# nClasses = np.max(alllabels) + 1
@@ -238,44 +236,6 @@ def gen_data(alldata,alllabels,batch_size):
 				labels = to_categorical(labels,num_classes=nClasses)
 			
 			yield (data,labels)
-
-def gen_bracketed_data(alldata,alllabels,nFrames,context_len=None):
-	batch_size = 512
-	while 1:
-		pos = 0
-		nClasses = np.max(alllabels) + 1
-		for i in xrange(len(nFrames)):
-			data = alldata[pos:pos + nFrames[i]]
-			labels = alllabels[pos:pos + nFrames[i]]
-
-			if len(labels.shape) == 1:
-				labels = to_categorical(labels,num_classes=nClasses)
-			if context_len != None:
-				pad_top = np.zeros((context_len,data.shape[1]))
-				pad_bot = np.zeros((context_len,data.shape[1]))
-				padded_data = np.concatenate((pad_top,data),axis=0)
-				padded_data = np.concatenate((padded_data,pad_bot),axis=0)
-
-				data = []
-				for j in range(context_len,len(padded_data) - context_len):
-					new_row = padded_data[j - context_len: j + context_len + 1]
-					new_row = new_row.flatten()
-					data.append(new_row)
-				data = np.array(data)
-			# if data.shape[0] < batch_size:
-			# 	pad_bot = np.zeros((batch_size-data.shape[0],data.shape[1])) + data[-1]
-			# 	data = np.concatenate((data,pad_bot),axis=0)
-			# 	pad_bot = np.zeros((batch_size-labels.shape[0],labels.shape[1])) + labels[-1]
-			# 	labels = np.concatenate((labels,pad_bot),axis=0)
-			# 	yield (data,labels)
-			# if data.shape[0] > batch_size:
-			# 	n_batches = data.shape[0] / batch_size + int(data.shape[0] % batch_size != 0)
-			# 	for j in range(n_batches):
-			# 		data = np.array(data[j*batch_size:(j+1)*batch_size])
-			# 		labels = np.array(labels[j*batch_size:(j+1)*batch_size])
-			# 		yield (data,labels)
-			yield (data,labels)
-			pos += nFrames[i]
 
 		
 
@@ -376,133 +336,23 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,
 										len(meta['framePos_Dev']))
 		print score
 
-def plotFromCSV(modelName):
-	data = np.loadtxt(modelName+'.csv',skiprows=1,delimiter=',')
-	epoch = data[:,[0]]
-	acc = data[:,[1]]
-	loss = data[:,[2]]
-	val_acc = data[:,[4]]
-	val_loss = data[:,[5]]
-
-	fig, ax1 = plt.subplots()
-	ax1.plot(acc)
-	ax1.plot(val_acc)
-	ax2 = ax1.twinx()
-	ax2.plot(loss,color='r')
-	ax2.plot(val_loss,color='g')
-	plt.title('model loss & accuracy')
-	ax1.set_ylabel('accuracy')
-	ax2.set_ylabel('loss')
-	ax1.set_xlabel('epoch')
-	ax1.legend(['training acc', 'testing acc'])
-	ax2.legend(['training loss', 'testing loss'])
-	fig.tight_layout()
-	plt.savefig(modelName+'.png')
-	plt.clf()
-
-def writeSenScores(filename,scores,freqs,weight,offset):
-	n_active = scores.shape[1]
-	s = ''
-	s = """s3
-version 0.1
-mdef_file ../../en_us.cd_cont_4000/mdef
-n_sen 4138
-logbase 1.000100
-endhdr
-"""
-	s += struct.pack('I',0x11223344)
-	# print freqs
-	scores /= freqs + (1.0 / len(freqs))
-	scores = np.log(scores)/np.log(1.0001)
-	scores *= -1
-	scores -= np.min(scores,axis=1).reshape(-1,1)
-	# scores = scores.astype(int)
-	scores *= 0.1 * weight
-	scores += offset
-	truncateToShort = lambda x: 32676 if x > 32767 else (-32768 if x < -32768 else x)
-	vf = np.vectorize(truncateToShort)
-	scores = vf(scores)
-	# scores /= np.sum(scores,axis=0)
-	for r in scores:
-		# print np.argmin(r)
-		s += struct.pack('h',n_active)
-		r_str = struct.pack('%sh' % len(r), *r)
-		# r_str = reduce(lambda x,y: x+y,r_str)
-		s += r_str
-	with open(filename,'w') as f:
-		f.write(s)
-
-def getPredsFromArray(model,data,nFrames,filenames,res_dir,res_ext,freqs):
-	preds = model.predict(data,verbose=1,batch_size=2048)
-	pos = 0
-	for i in range(len(nFrames)):
-		fname = filenames[i][:-4]
-		fname = reduce(lambda x,y: x+'/'+y,fname.split('/')[4:])
-		stdout.write("\r%d/%d 	" % (i,len(filenames)))
-		stdout.flush()
-		res_file_path = res_dir+fname+res_ext
-		dirname = os.path.dirname(res_file_path)
-		if not os.path.exists(dirname):
-			os.makedirs(dirname)
-		# preds = model.predict(data[pos:pos+nFrames[i]],batch_size=nFrames[i])
-		writeSenScores(res_file_path,preds[pos:pos+nFrames[i]],freqs)
-		pos += nFrames[i]
-
-def getPredsFromFilelist(model,filelist,file_dir,file_ext,
-							res_dir,res_ext,freqs,context_len=4,
-							weight=1,offset=0):
-	with open(filelist) as f:
-		files = f.readlines()
-		files = map(lambda x: x.strip(),files)
-	filepaths = map(lambda x: file_dir+x+file_ext,files)
-	scaler = StandardScaler(copy=False,with_std=False)
-	for i in range(len(filepaths)):
-		stdout.write("\r%d/%d 	" % (i,len(filepaths)))
-		stdout.flush()
-
-		f = filepaths[i]
-		if not os.path.exists(f):
-			print "\n",f
-			continue
-		data = np.loadtxt(f)
-		data = scaler.fit_transform(data)
-
-		pad_top = np.zeros((context_len,data.shape[1])) + data[0]
-		pad_bot = np.zeros((context_len,data.shape[1])) + data[-1]
-		padded_data = np.concatenate((pad_top,data),axis=0)
-		padded_data = np.concatenate((padded_data,pad_bot),axis=0)
-
-		data = []
-		for j in range(context_len,len(padded_data) - context_len):
-			new_row = padded_data[j - context_len: j + context_len + 1]
-			new_row = new_row.flatten()
-			data.append(new_row)
-		data = np.array(data)
-		preds = model.predict(data,batch_size=data.shape[0])
-		
-		res_file_path = res_dir+files[i]+res_ext
-		dirname = os.path.dirname(res_file_path)
-		if not os.path.exists(dirname):
-			os.makedirs(dirname)
-		writeSenScores(res_file_path,preds,freqs,weight,offset)
-
 if __name__ == '__main__':
 	print 'PROCESS-ID =', os.getpid()
 	print 'loading data...'
-	meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
-	x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
-	y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
+	meta = np.load('wsj0_phonelabels_bracketed_meta_ci.npz')
+	x_train = np.load('wsj0_phonelabels_bracketed_train_ci.npy',mmap_mode='r')
+	y_train = np.load('wsj0_phonelabels_bracketed_train_ci_labels.npy')
 	# end = x_train.shape[0] % 2048
 	# x_train = x_train[:-end]
 	# y_train = y_train[:-end]
-	nClasses = 4138
+	nClasses = 138
 	print nClasses
 	# print 'transforming labels...'
 	# y_train = to_categorical(y_train, num_classes = nClasses)
 
 	print 'loading test data...'
-	x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
-	y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
+	x_test = np.load('wsj0_phonelabels_bracketed_dev_ci.npy',mmap_mode='r')
+	y_test = np.load('wsj0_phonelabels_bracketed_dev_ci_labels.npy')
 	# # # end = x_test.shape[0] % 2048
 	# # # x_test = x_test[:-end]
 	# # # y_test = y_test[:-end]
@@ -518,14 +368,15 @@ if __name__ == '__main__':
 	# model = load_model('test_CP.h5')
 	# model = DBN_DNN(x_train, nClasses,5,2560,batch_size=128)
 	# model = load_model('mlp4-2x2560-cd-adam-bn-drop-conv-noshort_CP.h5')
-	# trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-2x2560-cd-adam-bn-drop-conv-noshort',pretrain=False)
+	trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-2x2560-ci-adam-bn-drop-conv-noshort',pretrain=False)
 
 
-	model = load_model('bestModels/best_CD.h5')
+	# model = load_model('newmodel')
+	# print model.summary()
 	# getPredsFromFilelist(model,'../wsj/wsj0/single_dev.txt','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/single_dev_NN/','.sen',meta['state_freq_Train'],context_len=5,weight=0.00035457)
-	# getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores_dev2/','.sen',meta['state_freq_Train'],weight=0.02744634)
-	getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/senscores_dev_cd/','.sen',meta['state_freq_Train'],context_len=5)
-	# getPredsFromArray(model,x_test,meta['framePos_Dev'],meta['filenames_Dev'],'/home/mshah1/wsj/wsj0/senscores_dev_cd/','.sen',meta['state_freq_Train'])
+	# getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores_dev2/','.sen',meta['state_freq_Train'])
+	# getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/senscores_dev_cd/','.sen',meta['state_freq_Train'],context_len=5)
+	# getPredsFromArray(model,np.load('DEV_PRED.npy'),meta['framePos_Dev'],meta['filenames_Dev'],'/home/mshah1/wsj/wsj0/senscores_dev_ci_hammad/','.sen',meta['state_freq_Train'],preds_in=True,weight=-0.00075526,offset=234.90414376)
 	# f = filter(lambda x : '22go0208.wv1.flac' in x, meta['filenames_Dev'])[0]
 	# file_idx = list(meta['filenames_Dev']).index(f)
 	# # print file_idx

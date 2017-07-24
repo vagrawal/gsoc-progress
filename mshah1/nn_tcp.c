@@ -7,6 +7,7 @@
 #include <netdb.h>
 #include "stdarg.h"
 #include "stdio.h"
+#include "nn_tcp.h"
 #include <string.h>
 #include <errno.h>
 #include <time.h>
@@ -66,9 +67,21 @@ int open_server_socket(char *my_ip, char *server_ip, int port)
     return server_sock;
 }
 
+void get_senone_scores(float *feat, int n_feats
+                        int16_t *scores, int n_scores, 
+                        char *model_name){
+    int model_name_len = strlen(model_name);
+    int packet_len = model_name_len+(n_feats*4);
+    int server_sock = open_server_socket("127.0.0.1","0.0.0.0",9000);
+    Send(server_sock,&packet_len,4);
+    Send(server_sock,model_name,strlen(model_name));
+    Send(server_sock,feat_buf_cd,n_feats*4);
+    Recv(server_sock,score_buf,n_scores*2);
+}
+
 int main(){
 	int16_t score_buf[4138];
-	double feat_buf_ci[225] = 
+	float feat_buf_ci[225] = 
         {6.1011, 15.073, 24.552, 38.234, 
             46.479, 67.203, 72.336, 76.193, 81.123,
             84.127, 87.706, 92.844, 90.843, 8.5409,
@@ -114,7 +127,7 @@ int main(){
             84.127, 87.706, 92.844, 90.843, 8.5409,
             8.911, 8.7754, 9.5856, 9.9425, 8.9031,
             8.2862, 9.1008, 9.8002, 9.8057, 9.9796,8.9734};
-    double feat_buf_cd[440] = {
+    float feat_buf_cd[440] = {
         6.9151, 16.056, 26.185, 28.527, 43.916, 53.126, 67.823, 
             63.852, 69.756, 96.275, 90.811, 88.143, 91.802, 7.4605 ,
             7.2699, 7.1905, 7.1041, 7.3749, 7.1837, 7.6972, 7.6366 ,
@@ -184,14 +197,14 @@ int main(){
     };
 	char* model_name = "mlp4-2x2560-cd-adam-bn-drop-conv-noshort_CP.h5\r\n";
     int model_name_len = strlen(model_name);
-    int packet_len = model_name_len+(440*8);
+    int packet_len = model_name_len+(440*4);
 	int server_sock = open_server_socket("127.0.0.1","0.0.0.0",9000);
     printf("%d\n", model_name_len);
     Send(server_sock,&packet_len,4);
 	Send(server_sock,model_name,strlen(model_name));
+	Send(server_sock,feat_buf_cd,440*4);
+	Recv(server_sock,score_buf,4138*2);
     time_t mytime;
-	Send(server_sock,feat_buf_cd,440*8);
-	Recv(server_sock,score_buf,4138*8);
     printf("%lu\n", (unsigned long)time(NULL)); 
 	printf("%d\n", score_buf[4137]);
 }
