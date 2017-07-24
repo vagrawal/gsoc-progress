@@ -178,3 +178,12 @@ Training is still running, and while the decrease in WER is slow, it is consiste
 I spent some time unsuccessfully trying to use previously trained model with LM to get one good result with LM(or dictionary) as instructed. There were problems with variable names and character vocabulary.
 
 I started writing documentation and the equations for the decoding and LM aspect of the model. It will be the first thing I will finish tomorrow.
+
+# 23-24 July
+
+Wrote a draft model description and thought more about the theoretical details of the model, after discussing with my mentor.
+
+I am continuing to run experiments both using LM during training, and without it.
+
+I am pushing some minor changes I did in few days, including correcting dropout.
+

@@ -16,7 +16,10 @@ def encoding_layer(
                         -0.1, 0.1, seed=2))
             cell_fw = tf.contrib.rnn.DropoutWrapper(
                     cell_fw,
-                    input_keep_prob = keep_prob)
+                    output_keep_prob = keep_prob,
+                    variational_recurrent=True,
+                    dtype=tf.float32,
+                    input_size=rnn_inputs.get_shape()[2])
 
             cell_bw = tf.contrib.rnn.LSTMCell(
                     rnn_size,
@@ -24,7 +27,10 @@ def encoding_layer(
                         -0.1, 0.1, seed=2))
             cell_bw = tf.contrib.rnn.DropoutWrapper(
                     cell_bw,
-                    input_keep_prob = keep_prob)
+                    output_keep_prob = keep_prob,
+                    variational_recurrent=True,
+                    dtype=tf.float32,
+                    input_size=rnn_inputs.get_shape()[2])
 
             enc_output, enc_state = tf.nn.bidirectional_dynamic_rnn(
                     cell_fw,
@@ -53,22 +59,9 @@ def training_decoding_layer(
         batch_size,
         start_token,
         LMfst):
-    attn_mech = tf.contrib.seq2seq.BahdanauAttention(
-            rnn_size,
-            enc_output,
-            input_lengths,
-            normalize=False,
-            name='BahdanauAttention')
 
     output_data = tf.concat(
             [tf.fill([batch_size, 1], start_token), output_data[:, :-1]], 1)
-
-    dec_cell = tf.contrib.seq2seq.AttentionWrapper(
-            dec_cell,
-            attn_mech,
-            output_attention=False)
-
-    dec_cell = LMCellWrapper(dec_cell, LMfst, 5)
 
     initial_state = dec_cell.zero_state(
             dtype=tf.float32,
@@ -113,20 +106,6 @@ def inference_decoding_layer(
     input_lengths = tf.contrib.seq2seq.tile_batch(
             input_lengths,
             beam_width)
-
-    attn_mech = tf.contrib.seq2seq.BahdanauAttention(
-            rnn_size,
-            enc_output,
-            input_lengths,
-            normalize=False,
-            name='BahdanauAttention')
-
-
-    dec_cell = tf.contrib.seq2seq.AttentionWrapper(
-            dec_cell,
-            attn_mech,
-            output_attention=False)
-    dec_cell = LMCellWrapper(dec_cell, LMfst, 5)
 
     initial_state = dec_cell.zero_state(
             dtype=tf.float32,
@@ -181,22 +160,39 @@ def seq2seq_model(
                 initializer=tf.random_uniform_initializer(-0.1, 0.1, seed=2))
         dec_cell_inp = tf.contrib.rnn.DropoutWrapper(
                 lstm,
-                input_keep_prob=keep_prob)
+                output_keep_prob = keep_prob,
+                variational_recurrent=True,
+                dtype=tf.float32)
         lstm = tf.contrib.rnn.LSTMCell(
                 rnn_size,
                 initializer=tf.random_uniform_initializer(-0.1, 0.1, seed=2))
         dec_cell = tf.contrib.rnn.DropoutWrapper(
                 lstm,
-                input_keep_prob=keep_prob)
-        out_cell = tf.contrib.rnn.LSTMCell(
+                output_keep_prob = keep_prob,
+                variational_recurrent=True,
+                dtype=tf.float32)
+
+        dec_cell_out = tf.contrib.rnn.LSTMCell(
                 rnn_size,
                 num_proj=vocab_size,
                 initializer=tf.random_uniform_initializer(-0.1, 0.1, seed=2))
-        out_cell = tf.contrib.rnn.DropoutWrapper(
-                out_cell,
-                input_keep_prob=keep_prob)
+
         dec_cell = tf.contrib.rnn.MultiRNNCell(
-                [dec_cell_inp] + [dec_cell] * (num_layers - 2) + [out_cell])
+                [dec_cell_inp] + [dec_cell] * (num_layers - 2) + [dec_cell_out])
+
+        attn_mech = tf.contrib.seq2seq.BahdanauAttention(
+                rnn_size,
+                enc_output,
+                input_lengths,
+                normalize=True,
+                name='BahdanauAttention')
+
+        dec_cell = tf.contrib.seq2seq.AttentionWrapper(
+                dec_cell,
+                attn_mech,
+                output_attention=False)
+
+        dec_cell = LMCellWrapper(dec_cell, LMfst, 5)
 
     with tf.variable_scope("decode"):
         training_logits = training_decoding_layer(
@@ -232,7 +228,6 @@ def seq2seq_model(
     predictions = tf.identity(
             predictions.predicted_ids,
             name='predictions')
-
 
     # Create the weights for sequence_loss
     masks = tf.sequence_mask(

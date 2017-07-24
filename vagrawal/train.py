@@ -135,8 +135,11 @@ def train(
         mean_speaker, var_speaker = get_speaker_stats(data_dir, nfilt, sets)
         tf.logging.info('Starting training')
 
+        last_wer = 100.0
+
         for epoch_i in range(1, num_epochs + 1):
-            if (checkpoint_path is not None):
+            # Don't waste time on evaluation for high WERs in training
+            if (checkpoint_path is not None and last_wer < 20.0):
                 run_eval(graph, job_dir, checkpoint_path, queue, predictions, data_dir,
                         nfilt, outputs,
                         output_lengths, step, cost, keep_prob_tensor,
@@ -200,6 +203,7 @@ def train(
                                  tf.Summary.Value(tag="CER", simple_value=tot_cer / pred.shape[0]),
                                  tf.Summary.Value(tag="loss", simple_value=batch_loss / display_step)
                                 ])
+                            last_wer = tot_wer / pred.shape[0]
                             writer.add_summary(summary, global_step=batch_i)
                             writer.flush()
                             batch_loss = 0.0
