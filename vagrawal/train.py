@@ -130,9 +130,10 @@ def train(
         writer = tf.summary.FileWriter(job_dir)
         saver = tf.train.Saver()
         batch_loss = 0.0
+        writer.add_graph(graph)
 
         mean_speaker, var_speaker = get_speaker_stats(data_dir, nfilt, sets)
-	tf.logging.info('Starting training')
+        tf.logging.info('Starting training')
 
         for epoch_i in range(1, num_epochs + 1):
             if (checkpoint_path is not None):

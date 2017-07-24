@@ -152,3 +152,29 @@ But at least, I found two bugs and I can see the training can progress to much b
 Earlier, I removed a dense layer which sits on top of decoding layer and replaced it with another LSTM with vocab size as output size as I needed to put LM on top of it. Unfortunately, I forgot that the output of LSTM has a finite range of pi. Hence, it was making training much more difficult as the lowest and the highest output probabilty can be in maximum certain ratio. Also, the attention with default parameters does not do what I thought it does. By default it does much more trickery than I was planning. It was wrong in my previous code too, but it worked. Still, I changed that too.
 
 I am hopeful that by tomorrow I will have a good result from the current model.
+
+# 18 July
+
+Still unable to get the model to train. It does not seems to be due to bugs in the code but I suspect the attention mechanism used initially enabled it to train faster. The model is still being trained and there is still chance that I could get a good accuracy.
+
+# 19 July
+
+Some progress in training. Now I am pretraining with just short sentences, else the model just can't seem to learn the alighnments.
+
+# 20 July
+
+Finally crossed a respectable margin after so much effort. With very limited experiments, my inconclusive interpretation is that my model is hard to train if LM is supplied from the start of training. Maybe, it's because smaller gradient size, and can be solved by using more learning rate. So the current training was done in three steps. I also spent some time in reading my code and it's tensorflow implementation in some detail. I found the dropout used before also includes the selected previous symbol, which is not what I wanted and I fixed that. The code is running and I will report my first result with LM tomorrow.
+
+I think I will be spending next couple of days writing documentation and packaging the code. Also I will switch from wsj0 to wsj1.
+
+# 21 July
+
+Some progress in code cleanup.
+
+# 22 July
+
+Training is still running, and while the decrease in WER is slow, it is consistent.
+
+I spent some time unsuccessfully trying to use previously trained model with LM to get one good result with LM(or dictionary) as instructed. There were problems with variable names and character vocabulary.
+
+I started writing documentation and the equations for the decoding and LM aspect of the model. It will be the first thing I will finish tomorrow.

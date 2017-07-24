@@ -13,7 +13,7 @@ import tensorflow as tf
 import keras.backend.tensorflow_backend as KTF
 
 
-def get_session(gpu_fraction=0.95x):
+def get_session(gpu_fraction=0.95):
     '''Assume that you have 6GB of GPU memory and want to allocate ~2GB'''
 
     num_threads = os.environ.get('OMP_NUM_THREADS')
@@ -30,41 +30,47 @@ max_len = 0
 
 
 def get_uttr_len(uttr,framepointer):
-    uttr_strt = framepointer[uttr-1]+1
+    if not uttr:
+        uttr_strt = 0
+    else:     
+        uttr_strt = framepointer[uttr-1]+1
+            #uttr_strt=uttr_strt[0]
     uttr_end = framepointer[uttr]
-    return uttr_end - uttr_strt
+    return int(uttr_end - uttr_strt)
 
 def batch_generator(X, labels,framepointer, batch_size):
     while True: 
         global  max_len
-        uttrences = [np.random.choice((len(framepointer)-1),1,replace=False) for x in range(batch_size)]
+        
+        uttrences = [int(np.random.choice(len(framepointer)-1,1,replace=True)) for x in range(batch_size)]
         uttr_lengths = [get_uttr_len(uttr,framepointer) for uttr in uttrences]
-        max_uttr_len = max(uttr_lengths)[0]
+        max_uttr_len = max(uttr_lengths)
         max_len = max_uttr_len
-            #print "max uttr len",max_uttr_len
-
-            #builds a batch of size N=len(uttrences) 
+        #print "max uttr len",max_uttr_len
+        #builds a batch of size N=len(uttrences) 
 
         uttr_list = []
         uttr_list_labls=[]
-        #for uttr in uttrences:
-        if not uttr:
-            uttr_strt = 0
-        else:     
-            uttr_strt = framepointer[uttr-1]+1
-            uttr_strt=uttr_strt[0]
+        for uttr in uttrences:
+            if not uttr:
+                uttr_strt = 0
+            else:     
+                uttr_strt = framepointer[uttr-1]+1
 
-        uttr_end = framepointer[uttr]        
-        uttr_end=uttr_end[0]
-        seq = X[uttr_strt:uttr_end,0:75]
-        seq_labels = labels[uttr_strt+1:uttr_end+1]
-        seq_labels = [int(x+1) for x in seq_labels] #adding 1 to all labels so I can use 0 as mask
-        #seq_labels[len(seq_labels)-1]= #last symbol is special symbol
-        #print seq_labels
-        uttr_list.append(seq)
-        uttr_list_labls.append(seq_labels)
-        uttr_list= sequence.pad_sequences(uttr_list, maxlen=max_len, dtype='float32',padding='post',truncating='post' )
-        uttr_list_labls = sequence.pad_sequences(uttr_list_labls, maxlen=max_len,dtype='int16',padding='post',truncating='post')
+
+            uttr_end = framepointer[uttr]        
+
+            seq = X[uttr_strt:uttr_end,0:75]
+            seq_labels = labels[uttr_strt+1:uttr_end+1]
+            #adding 1 to all labels so I can use 0 as mask
+            #seq_labels = [int(x+1) for x in seq_labels] 
+            #seq_labels[len(seq_labels)-1]= #last symbol is special symbol
+            uttr_list.append(seq)
+            uttr_list_labls.append(seq_labels)
+        uttr_list= sequence.pad_sequences(uttr_list, maxlen=max_len, dtype='float32',padding='post',truncating='post',value=0.)
+        uttr_list_labls = sequence.pad_sequences(uttr_list_labls,maxlen=max_len,\
+                          dtype='int16',padding='post',truncating='post',value=138.)
+       
         new_labels = []
         for label in uttr_list_labls:
             label= to_categorical(label,num_classes=139)
@@ -106,16 +112,9 @@ from keras.utils import plot_model
 
 model = Sequential()
 #5 bidirectional hidden layers
-model.add(Bidirectional(LSTM(250,return_sequences= True) ,input_shape=(None, 75)))
+model.add(Bidirectional(LSTM(150,return_sequences= True) ,input_shape=(None, 75)))
 model.add(GaussianNoise(0.075))
-model.add(Bidirectional(LSTM(250,return_sequences= True) ,input_shape=(None, 75)))
-model.add(GaussianNoise(0.075))
-#model.add(Bidirectional(LSTM(250,return_sequences= True) ,input_shape=(cutoff, 78)))
-#model.add(GaussianNoise(0.075))
-#model.add(Bidirectional(LSTM(250,return_sequences= True) ,input_shape=(cutoff, 78)))
-#model.add(GaussianNoise(0.075))
-#model.add(Bidirectional(LSTM(250,return_sequences= True) ,input_shape=(cutoff, 78)))
-#model.add(GaussianNoise(0.075))
+model.add(Bidirectional(LSTM(150,return_sequences= True) ,input_shape=(None, 75)))
 model.add(TimeDistributed(Dense(139)))
 model.add(Activation('softmax'))
 
@@ -124,36 +123,12 @@ print model.summary()
 sgd = optimizers.SGD(lr=0.001, decay=1e-6, momentum=0.9, nesterov=True)
 model.compile(optimizer=sgd,loss='categorical_crossentropy',metrics=['accuracy'])
 
-lstm_hist=model.fit_generator(batch_generator(X,Y,frame,55),steps_per_epoch=447,epochs=7,verbose=2)
-
-model.save("newmodel")
+lstm_hist=model.fit_generator(batch_generator(X,Y,frame,38),steps_per_epoch=467,epochs=7,verbose=2)
+model.save("model_2")
 
 X =0
 Y=0
-#loading test data
-Xtest = np.load("/home/hammad/new_data/XDEV.npy")
-Ytest = np.load("/home/hammad/new_data/YDEV.npy")
-Testframe = np.load("/home/hammad/new_data/YDEV(1).npy")
-#Testframe = [int(x-33332446) for x in Testframe]
-#Testframe=np.asarray(Testframe)
 
-print "XDEV",Xtest.shape
-print "YDEV",Ytest.shape
-print "frame (total uttr)",Testframe.shape
-score = model.evaluate_generator(batch_generator(Xtest,Ytest,Testframe,1103),1)
-print score
-
-Xtest = np.load("/home/hammad/new_data/XTEST.npy")
-Ytest = np.load("/home/hammad/new_data/YTEST.npy")
-Testframe = np.load("/home/hammad/new_data/YTEST(1).npy")
-#Testframe = [int(x-33332446) for x in Testframe]
-#Testframe=np.asarray(Testframe)
-
-print "Xtest",Xtest.shape
-print "Ytest",Ytest.shape
-print "frame (total uttr)",Testframe.shape
-score = model.evaluate_generator(batch_generator(Xtest,Ytest,Testframe,520),1)
-print score
 
 import matplotlib
 matplotlib.use('Agg')
@@ -177,3 +152,29 @@ plt.xlabel('epoch')
 plt.legend(['train','test'],loc='lower right')
 #plt.show()
 plt.savefig('loss.png')
+
+
+#loading test data
+Xtest = np.load("/home/hammad/new_data/XDEV.npy")
+Ytest = np.load("/home/hammad/new_data/YDEV.npy")
+Testframe = np.load("/home/hammad/new_data/YDEV(1).npy")
+#Testframe = [int(x-33332446) for x in Testframe]
+#Testframe=np.asarray(Testframe)
+
+print "XDEV",Xtest.shape
+print "YDEV",Ytest.shape
+print "frame (total uttr)",Testframe.shape
+score = model.evaluate_generator(batch_generator(Xtest,Ytest,Testframe,1),1103)
+print score
+
+Xtest = np.load("/home/hammad/new_data/XTEST.npy")
+Ytest = np.load("/home/hammad/new_data/YTEST.npy")
+Testframe = np.load("/home/hammad/new_data/YTEST(1).npy")
+#Testframe = [int(x-33332446) for x in Testframe]
+#Testframe=np.asarray(Testframe)
+
+print "Xtest",Xtest.shape
+print "Ytest",Ytest.shape
+print "frame (total uttr)",Testframe.shape
+score = model.evaluate_generator(batch_generator(Xtest,Ytest,Testframe,1),520)
+print score
