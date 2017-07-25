@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import pylab as pl
 from sys import stdout
 import os
+from keras.preprocessing.sequence import pad_sequences
 def readMFC(fname,nFeats):
 	data = []
 	with open(fname,'rb') as f:
@@ -19,18 +20,23 @@ def readMFC(fname,nFeats):
 	assert(data.shape[0] * data.shape[1] == head)
 	return data
 
-
-def gen_bracketed_data(alldata,alllabels,nFrames,context_len=None):
-	batch_size = 512
+def _gen_bracketed_data(x,y,nFrames,
+						context_len,fix_length,
+						for_CTC):
+	max_len = ((np.max(nFrames) + 50)/100) * 100 #rounding off to the nearest 100
+	batch_size = None
 	while 1:
 		pos = 0
-		nClasses = np.max(alllabels) + 1
+		nClasses = np.max(y) + 1
+		if for_CTC:
+			alldata = []
+			alllabels = []
 		for i in xrange(len(nFrames)):
-			data = alldata[pos:pos + nFrames[i]]
-			labels = alllabels[pos:pos + nFrames[i]]
+			data = x[pos:pos + nFrames[i]]
+			labels = y[pos:pos + nFrames[i]]
 
-			if len(labels.shape) == 1:
-				labels = to_categorical(labels,num_classes=nClasses)
+			# if len(labels.shape) == 1:
+			# 	labels = to_categorical(labels,num_classes=nClasses)
 			if context_len != None:
 				pad_top = np.zeros((context_len,data.shape[1]))
 				pad_bot = np.zeros((context_len,data.shape[1]))
@@ -43,20 +49,42 @@ def gen_bracketed_data(alldata,alllabels,nFrames,context_len=None):
 					new_row = new_row.flatten()
 					data.append(new_row)
 				data = np.array(data)
-			# if data.shape[0] < batch_size:
-			# 	pad_bot = np.zeros((batch_size-data.shape[0],data.shape[1])) + data[-1]
-			# 	data = np.concatenate((data,pad_bot),axis=0)
-			# 	pad_bot = np.zeros((batch_size-labels.shape[0],labels.shape[1])) + labels[-1]
-			# 	labels = np.concatenate((labels,pad_bot),axis=0)
-			# 	yield (data,labels)
-			# if data.shape[0] > batch_size:
-			# 	n_batches = data.shape[0] / batch_size + int(data.shape[0] % batch_size != 0)
-			# 	for j in range(n_batches):
-			# 		data = np.array(data[j*batch_size:(j+1)*batch_size])
-			# 		labels = np.array(labels[j*batch_size:(j+1)*batch_size])
-			# 		yield (data,labels)
-			yield (data,labels)
+			if for_CTC:
+				if batch_size != None:
+					alldata.append(data)
+					alllabels.append(labels)
+				
+					if len(alldata) == batch_size:
+						alldata = np.array(alldata)
+						alllabels = np.array(alllabels)
+						if fix_length:
+							alldata = pad_sequences(alldata,maxlen=1000,dtype='float32')
+							alllabels = pad_sequences(alllabels,maxlen=1000,dtype='float32',value=0)
+						inputs = {'x': alldata,
+								'y': alllabels,
+								'x_len': np.array(map(lambda x: len(x), alldata)),
+								'y_len': np.array(map(lambda x: len(x), alllabels))}
+						outputs = {'ctc': np.zeros([batch_size])}
+						yield (inputs,outputs)
+						alldata = []
+						alllabels = []
+				else:
+					data = np.array([data])
+					labels = np.array([labels])
+					inputs = {'x': data,
+								'y': labels,
+								'x_len': [data.shape[0]],
+								'y_len': [labels.shape[0]]}
+					outputs = {'ctc': np.zeros([batch_size])}
+					yield (inputs,outputs)
+			else:
+				yield (data,labels)
 			pos += nFrames[i]
+
+def gen_bracketed_data(context_len=None,fix_length=False,
+						for_CTC=False):
+	return lambda x,y,nf: _gen_bracketed_data(x,y,nf,context_len,fix_length,
+						for_CTC)
 
 def plotFromCSV(modelName):
 	data = np.loadtxt(modelName+'.csv',skiprows=1,delimiter=',')

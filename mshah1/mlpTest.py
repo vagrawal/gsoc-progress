@@ -68,35 +68,33 @@ def mlp1(input_dim,output_dim,depth,width,dropout=False,
 	              metrics=['accuracy'])
 	return model
 
-def mlp2(input_dim,output_dim):
-	model = Sequential()
-	model.add(Dense(1000, activation='relu', input_dim=input_dim))
-	model.add(Dropout(0.5))
-	model.add(Dense(1000, activation='relu'))
-	model.add(Dropout(0.5))
-	model.add(Dense(1000, activation='relu'))
-	model.add(Dropout(0.5))
-	model.add(Dense(output_dim, activation='softmax'))
-	sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+def ctc_lambda_func(args):
+    y_pred, labels, input_length, label_length = args
+    return K.ctc_batch_cost(labels, y_pred, input_length, label_length)
 
-	model.compile(loss='categorical_crossentropy',
-	              optimizer='rmsprop',
-	              metrics=['accuracy'])
-	return model
+def mlp_wCTC(input_dim,output_dim,depth,width,BN=False):
+	x = Input(name='x', shape=(1000,input_dim))
+	h = Dense(width,activation='sigmoid')(x)
+	if BN:
+		BatchNormalization()(h)
+	for i in range(depth-1):
+		h = Dense(width,activation='sigmoid')(h)
+		if BN:
+			BatchNormalization()(h)
+	h = Dense(output_dim)(h)
+	out = Activation('softmax', name='softmax')(h)
 
-def mlp3(input_dim,output_dim):
-	model = Sequential()
-	model.add(Dense(3000, activation='relu', input_dim=input_dim))
-	model.add(Dense(1000, activation='relu'))
-	model.add(Dropout(0.25))
-	model.add(Dense(1000, activation='relu'))
-	model.add(Dropout(0.25))
-	model.add(Dense(1000, activation='relu'))
-	model.add(Dropout(0.25))
-	model.add(Dense(output_dim, activation='softmax'))
-	model.compile(optimizer='adagrad',
-	              loss='categorical_crossentropy',
-	              metrics=['accuracy'])
+	y = Input(name='y',shape=[1000])
+	x_len = Input(name='x_len', shape=[1])
+	y_len = Input(name='y_len', shape=[1])
+
+	loss_out = Lambda(ctc_lambda_func, output_shape=(1,), name='ctc')([out, y, x_len, y_len])
+	model = Model(inputs=[x, y, x_len, y_len], outputs=loss_out)
+
+	model.compile(loss={'ctc': lambda y_true, y_pred: y_pred},
+					optimizer='adam',
+					metrics=['accuracy'])
+
 	return model
 
 def _bn_relu(input):
@@ -279,7 +277,7 @@ def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],outEqIn=False):
 
 def trainNtest(model,x_train,y_train,x_test,y_test,meta,
 				modelName,testOnly=False,pretrain=False,
-				init_epoch=0):
+				init_epoch=0, fit_generator=None):
 	print 'TRAINING MODEL:',modelName
 	if not testOnly:
 		if pretrain:
@@ -291,22 +289,17 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,
 						ReduceLROnPlateau(patience=5,factor=0.5,min_lr=10**(-6), verbose=1),
 						CSVLogger(modelName+'.csv',append=True)]
 		batch_size = 512
-		history = model.fit(x_train,y_train,epochs=100,batch_size=batch_size,
-							initial_epoch=init_epoch,
-							validation_data=(x_test,y_test),
-							callbacks=callback_arr)
-		# EarlyStopping(monitor='val_acc',min_delta=0.25,patience=1,mode='max')
-		# history = model.fit_generator(gen_bracketed_data(x_train,y_train,meta['framePos_Train']),
-		# 								steps_per_epoch=len(meta['framePos_Train']), epochs=30,
-		# 								validation_data=gen_bracketed_data(x_test,y_test,meta['framePos_Dev']),
-		# 								validation_steps = len(meta['framePos_Dev']),
-		# 								callbacks=callback_arr)
-		# model.fit_generator(gen_data(x_train,y_train,batch_size),
-		# 					steps_per_epoch = x_train.shape[0] / batch_size,
-		# 					epochs = 75,
-		# 					validation_data = gen_data(x_test,y_test,batch_size),
-		# 					validation_steps = x_test.shape[0] / batch_size,
-		# 					callbacks=callback_arr)
+		if fit_generator == None:
+			history = model.fit(x_train,y_train,epochs=100,batch_size=batch_size,
+								initial_epoch=init_epoch,
+								validation_data=(x_test,y_test),
+								callbacks=callback_arr)
+		else:
+			history = model.fit_generator(fit_generator(x_train,y_train,meta['framePos_Train']),
+											steps_per_epoch=len(meta['framePos_Train']), epochs=30,
+											validation_data=fit_generator(x_test,y_test,meta['framePos_Dev']),
+											validation_steps = len(meta['framePos_Dev']),
+											callbacks=callback_arr)
 		print 'saving model...'
 		model.save(modelName+'.h5')
 		# model.save_weights(modelName+'_W.h5')
@@ -339,20 +332,20 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,
 if __name__ == '__main__':
 	print 'PROCESS-ID =', os.getpid()
 	print 'loading data...'
-	meta = np.load('wsj0_phonelabels_bracketed_meta_ci.npz')
-	x_train = np.load('wsj0_phonelabels_bracketed_train_ci.npy',mmap_mode='r')
-	y_train = np.load('wsj0_phonelabels_bracketed_train_ci_labels.npy')
+	meta = np.load('wsj0_phonelabels_meta.npz')
+	x_train = np.load('wsj0_phonelabels_train.npy',mmap_mode='r')
+	y_train = np.load('wsj0_phonelabels_train_labels.npy')
 	# end = x_train.shape[0] % 2048
 	# x_train = x_train[:-end]
 	# y_train = y_train[:-end]
-	nClasses = 138
+	nClasses = 139
 	print nClasses
 	# print 'transforming labels...'
 	# y_train = to_categorical(y_train, num_classes = nClasses)
 
 	print 'loading test data...'
-	x_test = np.load('wsj0_phonelabels_bracketed_dev_ci.npy',mmap_mode='r')
-	y_test = np.load('wsj0_phonelabels_bracketed_dev_ci_labels.npy')
+	x_test = np.load('wsj0_phonelabels_dev.npy',mmap_mode='r')
+	y_test = np.load('wsj0_phonelabels_dev_labels.npy')
 	# # # end = x_test.shape[0] % 2048
 	# # # x_test = x_test[:-end]
 	# # # y_test = y_test[:-end]
@@ -363,12 +356,14 @@ if __name__ == '__main__':
 
 	print 'initializing model...'
 	# model = load_model('dbn-3x2048-sig-adagrad_CP.h5')
-	model = mlp4(x_train.shape[1], nClasses,1,2,2560,shortcut=False,BN=True,conv=True,dropout=True,regularize=False)
-	# model = mlp1(x_train.shape[1], nClasses,4,2560,BN=True,regularize=False,lin_boost=False)
+	# model = mlp4(x_train.shape[1]*11, nClasses,1,2,2560,shortcut=False,BN=True,conv=True,dropout=True,regularize=False)
+	# model = mlp1(x_train.shape[1]*11, nClasses,2,2048,BN=True,regularize=False,lin_boost=False)
+	model = mlp_wCTC(x_train.shape[1]*11,nClasses,3,2048,BN=True)
 	# model = load_model('test_CP.h5')
 	# model = DBN_DNN(x_train, nClasses,5,2560,batch_size=128)
 	# model = load_model('mlp4-2x2560-cd-adam-bn-drop-conv-noshort_CP.h5')
-	trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-2x2560-ci-adam-bn-drop-conv-noshort',pretrain=False)
+	fg = gen_bracketed_data(context_len=5,for_CTC=True,fix_length=True)
+	trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp_wCTC-3x2048-ci-adam-bn',fit_generator=fg)
 
 
 	# model = load_model('newmodel')

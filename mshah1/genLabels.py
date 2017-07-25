@@ -43,17 +43,16 @@ def frame2state(fname, phone2state, onlyPhone=True):
 	states = map(lambda x: phone2state[x[1]][int(x[0])], lines)
 	return (list(states))
 
-def genDataset(DB_path, filelist, feat_path, stseg_path, mdef_fname, context_len=None):
+def genDataset(DB_path, train_flist, dev_flist, test_flist, feat_path, stseg_path, mdef_fname, context_len=None):
 	global done
-	files = np.loadtxt(DB_path+filelist,dtype=str)
-	files = map(lambda x: DB_path+feat_path+x+'.mls',files)
-	
+	train_files = np.loadtxt(DB_path+train_flist,dtype=str)
+	train_files = map(lambda x: DB_path+feat_path+x+'.mls',train_files)
 	train_files = filter(lambda x: 'tr_' in x and
-									'wv1' in x, files)
-	test_files = filter(lambda x: 'si_et_20' in x  and
-									'wv1' in x, files)
-	dev_files = filter(lambda x: 'si_dt_20' in x and
-									'wv1' in x, files)
+									'wv1' in x, train_files)
+	test_files = np.loadtxt(DB_path+test_flist,dtype=str)
+	test_files = map(lambda x: DB_path+feat_path+x+'.mls',test_files)
+	dev_files = np.loadtxt(DB_path+dev_flist,dtype=str)
+	dev_files = map(lambda x: DB_path+feat_path+x+'.mls',dev_files)
 
 	stseg_files_train = map(lambda x: x.split('/')[-1][:-3]+'stseg.txt',train_files)
 	stseg_files_test = map(lambda x: x.split('/')[-1][:-3]+'stseg.txt',test_files)
@@ -155,13 +154,13 @@ def genDataset(DB_path, filelist, feat_path, stseg_path, mdef_fname, context_len
 	# t = threading.Thread(target=ping)
 	# t.start()
 	if context_len != None:
-		np.save('wsj0_phonelabels_bracketed_train_ci.npy',X_Train)
-		np.save('wsj0_phonelabels_bracketed_test_ci.npy',X_Test)
-		np.save('wsj0_phonelabels_bracketed_dev_ci.npy',X_Dev)
-		np.save('wsj0_phonelabels_bracketed_train_ci_labels.npy',Y_Train)
-		np.save('wsj0_phonelabels_bracketed_test_ci_labels.npy',Y_Test)
-		np.save('wsj0_phonelabels_bracketed_dev_ci_labels.npy',Y_Dev)
-		np.savez('wsj0_phonelabels_bracketed_meta_ci.npz',framePos_Train=framePos_Train,
+		np.save('wsj0_phonelabels_bracketed_train.npy',X_Train)
+		np.save('wsj0_phonelabels_bracketed_test.npy',X_Test)
+		np.save('wsj0_phonelabels_bracketed_dev.npy',X_Dev)
+		np.save('wsj0_phonelabels_bracketed_train_labels.npy',Y_Train)
+		np.save('wsj0_phonelabels_bracketed_test_labels.npy',Y_Test)
+		np.save('wsj0_phonelabels_bracketed_dev_labels.npy',Y_Dev)
+		np.savez('wsj0_phonelabels_bracketed_meta.npz',framePos_Train=framePos_Train,
 														framePos_Test=framePos_Test,
 														framePos_Dev=framePos_Dev,
 														filenames_Train=filenames_Train,
@@ -205,6 +204,6 @@ def normalizeByUtterance():
 	print data
 #print(read_sen_labels_from_mdef('../wsj_all_cd30.mllt_cd_cont_4000/mdef'))
 # frame2state('../wsj/wsj0/statesegdir/40po031e.wv2.flac.stseg.txt', '../wsj_all_cd30.mllt_cd_cont_4000/mdef')
-genDataset('../wsj/wsj0/','etc/wsj0_train.fileids','feat_cd_mls/','stateseg_ci_dir/','../en_us.ci_cont/mdef',context_len=5)
+genDataset('../wsj/wsj0/','etc/wsj0_train.fileids','etc/wsj0_dev.fileids','etc/wsj0_test.fileids','feat_cd_mls/','stateseg_ci_dir/','../en_us.ci_cont/mdef')
 # normalizeByUtterance()
 # ../wsj/wsj0/feat_mls/11_6_1/wsj0/sd_dt_20/00b/00bo0t0e.wv1.flac.mls 00bo0t0e.wv1.flac.stseg.txt
