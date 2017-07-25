@@ -187,3 +187,6 @@ I am continuing to run experiments both using LM during training, and without it
 
 I am pushing some minor changes I did in few days, including correcting dropout.
 
+# 25 July
+
+I was hopeful to get some results today, but still couldn't get the model to train. Apart from that, I fixed some parts of the code.

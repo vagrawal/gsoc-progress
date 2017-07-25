@@ -59,9 +59,22 @@ def training_decoding_layer(
         batch_size,
         start_token,
         LMfst):
+    attn_mech = tf.contrib.seq2seq.BahdanauAttention(
+            rnn_size,
+            enc_output,
+            input_lengths,
+            normalize=True,
+            name='BahdanauAttention')
 
     output_data = tf.concat(
             [tf.fill([batch_size, 1], start_token), output_data[:, :-1]], 1)
+
+    dec_cell = tf.contrib.seq2seq.AttentionWrapper(
+            dec_cell,
+            attn_mech,
+            output_attention=False)
+
+    dec_cell = LMCellWrapper(dec_cell, LMfst, 5)
 
     initial_state = dec_cell.zero_state(
             dtype=tf.float32,
@@ -106,6 +119,20 @@ def inference_decoding_layer(
     input_lengths = tf.contrib.seq2seq.tile_batch(
             input_lengths,
             beam_width)
+
+    attn_mech = tf.contrib.seq2seq.BahdanauAttention(
+            rnn_size,
+            enc_output,
+            input_lengths,
+            normalize=True,
+            name='BahdanauAttention')
+
+    dec_cell = tf.contrib.seq2seq.AttentionWrapper(
+            dec_cell,
+            attn_mech,
+            output_attention=False)
+
+    dec_cell = LMCellWrapper(dec_cell, LMfst, 5)
 
     initial_state = dec_cell.zero_state(
             dtype=tf.float32,
@@ -179,20 +206,6 @@ def seq2seq_model(
 
         dec_cell = tf.contrib.rnn.MultiRNNCell(
                 [dec_cell_inp] + [dec_cell] * (num_layers - 2) + [dec_cell_out])
-
-        attn_mech = tf.contrib.seq2seq.BahdanauAttention(
-                rnn_size,
-                enc_output,
-                input_lengths,
-                normalize=True,
-                name='BahdanauAttention')
-
-        dec_cell = tf.contrib.seq2seq.AttentionWrapper(
-                dec_cell,
-                attn_mech,
-                output_attention=False)
-
-        dec_cell = LMCellWrapper(dec_cell, LMfst, 5)
 
     with tf.variable_scope("decode"):
         training_logits = training_decoding_layer(
