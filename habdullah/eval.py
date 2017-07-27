@@ -27,10 +27,11 @@ def get_uttr_len(uttr,framepointer):
             #uttr_strt=uttr_strt[0]
     uttr_end = framepointer[uttr]
     return int(uttr_end - uttr_strt)
-
+pos=0
 def batch_generator(X, labels,framepointer, batch_size):
     global  uttr_no
     print uttr_no
+    global pos
     #uttrences = [int(np.random.choice(len(framepointer)-1,1,replace=False)) for x in range(batch_size)]
     #uttr_lengths = [get_uttr_len(uttr,framepointer) for uttr in uttrences]
     uttrs=[uttr_no]
@@ -46,31 +47,34 @@ def batch_generator(X, labels,framepointer, batch_size):
 
     uttr_list = []
     uttr_list_labls=[]
+    
     for uttr in uttrs:
-        if not uttr:
-            uttr_strt = 0
-        else:     
-            uttr_strt = framepointer[uttr-1]+1
-            #uttr_strt=uttr_strt[0]
-        uttr_end = framepointer[uttr]
-
-        #uttr_end=uttr_end[0]
-        #print uttr
-        #print uttr_strt,uttr_end 
+        #if not uttr:
+        #    uttr_strt = 0
+        #else:     
+        #    uttr_strt = framepointer[uttr-1]+1
+        
+        #uttr_end = framepointer[uttr]+1
+	
+	uttr_strt = pos
+	uttr_end = pos+framepointer[uttr]
+        pos += framepointer[uttr]
+        
+        print "strt , end",uttr_strt,uttr_end 
         if uttr == len(framepointer)-1:
-            #print "len(framepointer)",len(framepointer),"-1,uttr",uttr
+        
             seq_labels = labels[uttr_strt+1:uttr_end]
-            #print seq_labels.shape
+        
             seq_labels=np.append(seq_labels,[0])
-            #print seq_labels.shape
+        
         else:    
             seq_labels = labels[uttr_strt+1:uttr_end+1]
-            seq_labels = [int(x+1) for x in seq_labels] #adding 1 to all labels so I can use 0 as mask
-        #print "max sequence",max(seq_labels)
-        #print len(seq_labels)
+        seq_labels = [int(x+1) for x in seq_labels] #adding 1 to all labels so I can use 0 as mask
+        
+        
         seq_labels[0]=0 #first symbol is special symbol    
         seq_labels[len(seq_labels)-1]=0 #last symbol is special symbol
-        #print seq_labels
+        
         uttr_list.append(X[uttr_strt:uttr_end,0:75])
         uttr_list_labls.append(seq_labels)
        
@@ -93,12 +97,12 @@ def batch_generator(X, labels,framepointer, batch_size):
     #print "Actual label:",y
     return x.astype(np.float32),y.astype(np.float32)      
 
-model = load_model("model_2")
+model = load_model("model_3")
 
 #loading test data
 Xtest = np.load("/home/hammad/new_data/XDEV.npy")
 Ytest = np.load("/home/hammad/new_data/YDEV.npy")
-Testframe = np.load("/home/hammad/new_data/YDEV(1).npy")
+Testframe = np.load("/home/hammad/correct_YDEV.npy")
 #Testframe = [int(x-33332446) for x in Testframe]
 #Testframe=np.asarray(Testframe)
 
@@ -106,28 +110,45 @@ print "Xdev",Xtest.shape
 print "Ydev",Ytest.shape
 print "total utterances",Testframe.shape
 predictions=[]
-for i in range(1103):
+count=0
+for i in range(len(Testframe)):
     test,testlabel = batch_generator(Xtest,Ytest,Testframe,1)
     pred = model.predict(test, batch_size=1, verbose=1)
     #print pred.shape
-    
-    if not i%50:
-        score = model.evaluate(test, testlabel, batch_size=1, verbose=1, sample_weight=None)
-        print score
-    #testlabel = [np.argmax(i) for i in testlabel[0]]
-    #pred =[np.argmax(i) for i in pred[0]]
-    
-    #print "test",test,test.shape
-    #print "test label",testlabel,np.array(testlabel).shape
-    #print "test pred",pred,np.array(pred).shape
-    #pred=[list(x) for x in pred]
-    if not i:
-        predictions=pred[0]
+    #print pred[0].shape
+    pred = [np.delete(i,0) for i in pred[0]]
+    #print "removed 0",np.asarray(pred).shape
+   
+    newp=[]
+    count1 = 0
+    for x in pred:
+        tmp1=[]
+        for j in x:
+            tmp = float(j)/sum(x)
+            tmp1.append(tmp)
+        #print "tmp1.shape",len(tmp1)
+        if not count1:
+            newp = np.asarray([tmp1])
+            count1+=1
+        else:
+            #print "newp.shape",newp.shape
+            newp=np.append(newp,np.array([tmp1]),axis=0)
+    #pred = [float(j)/sum(x) for x in pred for j in pred[x]]
+    #print "checking ",newp[0].shape,newp[5].shape
+    print newp.shape
+    #if not i%50:
+    #score = model.evaluate(test, testlabel, batch_size=1, verbose=1, sample_weight=None)
+    #print score
+   
+    #print pred.shape
+    if not count:
+        predictions=newp
+        count+=1
     else:
-        predictions=np.append(predictions,pred[0],axis=0)
+        predictions=np.append(predictions,newp,axis=0)
     print "predictions shape",predictions.shape
 
 print np.array(predictions).shape
-np.save("DEV_PRED(1)",predictions)
+np.save("DEV_PRED(2)",predictions)
 #print np.array(final).shape
 #print predictions
