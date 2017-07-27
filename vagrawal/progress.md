@@ -194,3 +194,7 @@ I was hopeful to get some results today, but still couldn't get the model to tra
 # 26 July
 
 As I failed to converge WER to a good place for more than a week, I have started the implementation of attention cutoff, which only allows the decoding layer to look near the mean of previous attention. It should ease the convergence of the loss.
+
+# 27 July
+
+Implemented first version of attention cutoff, but there still seems some bugs in it, so I am not pushing it just now.
