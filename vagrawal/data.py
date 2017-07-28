@@ -96,7 +96,7 @@ def read_data_thread(
         except:
             continue
         file = file[:-2]
-        if (in_fst(LMfst, text) and set_id == file.split('/')[2] and 'wv1' == file.split('.')[1]):
+        if (set_id == file.split('/')[2] and 'wv1' == file.split('.')[1]):
             feat = get_features(root + 'wav/' + file, nfilt)
             feat = feat - mean_speaker[file.split('/')[3]]
             feat = feat / np.sqrt(var_speaker[file.split('/')[3]])

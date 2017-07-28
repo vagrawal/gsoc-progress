@@ -1,6 +1,7 @@
 import tensorflow as tf
 from vocab import vocab, vocab_to_int, vocab_size
 from lm import LMCellWrapper
+from attention import BahdanauAttentionCutoff
 
 def encoding_layer(
         rnn_size,
@@ -59,7 +60,7 @@ def training_decoding_layer(
         batch_size,
         start_token,
         LMfst):
-    attn_mech = tf.contrib.seq2seq.BahdanauAttention(
+    attn_mech = BahdanauAttentionCutoff(
             rnn_size,
             enc_output,
             input_lengths,
@@ -72,9 +73,10 @@ def training_decoding_layer(
     dec_cell = tf.contrib.seq2seq.AttentionWrapper(
             dec_cell,
             attn_mech,
-            output_attention=False)
+            vocab_size,
+            output_attention=True)
 
-    dec_cell = LMCellWrapper(dec_cell, LMfst, 5)
+    # dec_cell = LMCellWrapper(dec_cell, LMfst, 5)
 
     initial_state = dec_cell.zero_state(
             dtype=tf.float32,
@@ -120,7 +122,7 @@ def inference_decoding_layer(
             input_lengths,
             beam_width)
 
-    attn_mech = tf.contrib.seq2seq.BahdanauAttention(
+    attn_mech = BahdanauAttentionCutoff(
             rnn_size,
             enc_output,
             input_lengths,
@@ -130,9 +132,10 @@ def inference_decoding_layer(
     dec_cell = tf.contrib.seq2seq.AttentionWrapper(
             dec_cell,
             attn_mech,
-            output_attention=False)
+            vocab_size,
+            output_attention=True)
 
-    dec_cell = LMCellWrapper(dec_cell, LMfst, 5)
+    # dec_cell = LMCellWrapper(dec_cell, LMfst, 5)
 
     initial_state = dec_cell.zero_state(
             dtype=tf.float32,

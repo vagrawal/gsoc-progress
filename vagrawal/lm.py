@@ -26,7 +26,7 @@ class LMCellWrapper(tf.contrib.rnn.RNNCell):
     def output_size(self):
         return self._output_size
 
-    def call(self, inputs, state):
+    def __call__(self, inputs, state):
         cell_state, fst_states, state_probs, num_fst_states = state
         cell_out, cell_state = self.dec_cell(inputs, cell_state)
         fstCosts_l = lambda s, p, n, i: fstCosts(s, p, n, i, self.fst, self.max_states)
@@ -37,7 +37,7 @@ class LMCellWrapper(tf.contrib.rnn.RNNCell):
         next_num_states.set_shape(num_fst_states.shape)
         next_state_probs.set_shape(state_probs.shape)
         lm_scores.set_shape(cell_out.shape)
-        fin_score = tf.nn.log_softmax(cell_out) + tf.nn.log_softmax(lm_scores)
+        fin_score = tf.nn.log_softmax(cell_out) + 0.5 * tf.nn.log_softmax(lm_scores)
         return fin_score, (cell_state, next_state, next_state_probs, next_num_states)
 
     def zero_state(self, batch_size, dtype):
