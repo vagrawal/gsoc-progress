@@ -197,4 +197,12 @@ As I failed to converge WER to a good place for more than a week, I have started
 
 # 27 July
 
+Implemented first version of attention cutoff, but there still seems some bugs in it, so I am not pushing it just now.
+
+# 28 July
+
 I completed implementation of attention cutoff. In running for a limited time, I am getting much better results. I will post the results of the converged model tomorrow.
+
+# 29 July
+
+Got some results and I am working on refactoring the code and writing documentation, so that other people can test it easily. Progress might be slow for the next two days because I will not be in my home.
