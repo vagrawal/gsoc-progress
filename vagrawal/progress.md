@@ -205,4 +205,8 @@ I completed implementation of attention cutoff. In running for a limited time, I
 
 # 29 July
 
-Got some results and I am working on refactoring the code and writing documentation, so that other people can test it easily. Progress might be slow for the next two days because I will not be in my home.
+Got some results and I am working on refactoring the code and writing documentation, so that other people can test it easily. Progress is likely to be slow for the next two days because I will not be in my home.
+
+# 30 July
+
+I couldn't get any time today, so no progress today.
