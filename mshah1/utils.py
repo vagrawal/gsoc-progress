@@ -20,11 +20,22 @@ def readMFC(fname,nFeats):
 	assert(data.shape[0] * data.shape[1] == head)
 	return data
 
+def ctc_labels(labels, blank_labels = []):
+	new_labels = []
+	for i in range(len(labels)):
+		l_curr = labels[i]
+		if l_curr not in blank_labels:
+			if i == 0:
+				new_labels.append(l_curr)
+			else:
+				if l_curr != labels[i-1]:
+					new_labels.append(l_curr)
+	return np.array(new_labels)
 def _gen_bracketed_data(x,y,nFrames,
 						context_len,fix_length,
 						for_CTC):
 	max_len = ((np.max(nFrames) + 50)/100) * 100 #rounding off to the nearest 100
-	batch_size = None
+	batch_size = 2
 	while 1:
 		pos = 0
 		nClasses = np.max(y) + 1
@@ -34,7 +45,8 @@ def _gen_bracketed_data(x,y,nFrames,
 		for i in xrange(len(nFrames)):
 			data = x[pos:pos + nFrames[i]]
 			labels = y[pos:pos + nFrames[i]]
-
+			# if for_CTC:
+			# 	labels = ctc_labels(labels,blank_labels=range(18) + [108,109,110])
 			# if len(labels.shape) == 1:
 			# 	labels = to_categorical(labels,num_classes=nClasses)
 			if context_len != None:
@@ -58,13 +70,13 @@ def _gen_bracketed_data(x,y,nFrames,
 						alldata = np.array(alldata)
 						alllabels = np.array(alllabels)
 						if fix_length:
-							alldata = pad_sequences(alldata,maxlen=1000,dtype='float32')
-							alllabels = pad_sequences(alllabels,maxlen=1000,dtype='float32',value=0)
+							alldata = pad_sequences(alldata,maxlen=1000,dtype='float32',truncating='post')
+							alllabels = pad_sequences(alllabels,maxlen=1000,dtype='float32',value=138,truncating='post')
 						inputs = {'x': alldata,
 								'y': alllabels,
 								'x_len': np.array(map(lambda x: len(x), alldata)),
 								'y_len': np.array(map(lambda x: len(x), alllabels))}
-						outputs = {'ctc': np.zeros([batch_size])}
+						outputs = {'ctc': np.ones([batch_size])}
 						yield (inputs,outputs)
 						alldata = []
 						alllabels = []
@@ -75,7 +87,7 @@ def _gen_bracketed_data(x,y,nFrames,
 								'y': labels,
 								'x_len': [data.shape[0]],
 								'y_len': [labels.shape[0]]}
-					outputs = {'ctc': np.zeros([batch_size])}
+					outputs = {'ctc': labels}
 					yield (inputs,outputs)
 			else:
 				yield (data,labels)
@@ -175,7 +187,7 @@ def getPredsFromFilelist(model,filelist,file_dir,file_ext,
 
 		f = filepaths[i]
 		if not os.path.exists(f):
-			print "\n",f
+			print ("\n",f)
 			continue
 		data = np.loadtxt(f)
 		data = scaler.fit_transform(data)
@@ -198,3 +210,5 @@ def getPredsFromFilelist(model,filelist,file_dir,file_ext,
 		if not os.path.exists(dirname):
 			os.makedirs(dirname)
 		writeSenScores(res_file_path,preds,freqs,weight,offset)
+
+# print(ctc_labels('aa-hello',['-']))

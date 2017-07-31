@@ -6,6 +6,7 @@ import time
 import sys
 from sklearn.preprocessing import StandardScaler
 import utils
+from keras.preprocessing.sequence import pad_sequences
 
 done = 0
 def ping():
@@ -43,7 +44,7 @@ def frame2state(fname, phone2state, onlyPhone=True):
 	states = map(lambda x: phone2state[x[1]][int(x[0])], lines)
 	return (list(states))
 
-def genDataset(DB_path, train_flist, dev_flist, test_flist, feat_path, stseg_path, mdef_fname, context_len=None):
+def genDataset(DB_path, train_flist, dev_flist, test_flist, feat_path, stseg_path, mdef_fname, context_len=None, keep_utts=False):
 	global done
 	train_files = np.loadtxt(DB_path+train_flist,dtype=str)
 	train_files = map(lambda x: DB_path+feat_path+x+'.mls',train_files)
@@ -121,7 +122,7 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist, feat_path, stseg_pat
 		
 		data = utils.readMFC(data_file,40).astype('float32')
 		labels = frame2state(DB_path + stseg_path + f, phone2state,onlyPhone=False)
-
+		
 		nFrames = min(len(labels), data.shape[0])
 		data = data[:nFrames]
 		data = scaler.fit_transform(data)
@@ -142,14 +143,26 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist, feat_path, stseg_pat
 			state_freq[l] += 1
 		filenames.append(data_file)
 		frames.append(nFrames)
-		allData += list(data)
-		allLabels += list(labels)
+		if keep_utts:
+			allData.append(data)
+			allLabels.append(np.array(labels) + 1)			
+		else:
+			allData += list(data)
+			allLabels += list(labels)
 		pos += nFrames
 		assert(len(allLabels) == len(allData))
 	# print allData
 	print len(allData), len(allLabels)
-
-	
+	if keep_utts:
+		X_Train = pad_sequences(X_Train,maxlen=1000,dtype='float32',padding='post')
+		Y_Train = pad_sequences(Y_Train,maxlen=1000,dtype='float32',padding='post',value=n_states)
+		Y_Train = Y_Train.reshape(Y_Train.shape[0],Y_Train.shape[1],1)
+		X_Dev = pad_sequences(X_Dev,maxlen=1000,dtype='float32',padding='post')
+		Y_Dev = pad_sequences(Y_Dev,maxlen=1000,dtype='float32',padding='post',value=n_states)
+		Y_Dev = Y_Dev.reshape(Y_Dev.shape[0],Y_Dev.shape[1],1)
+		X_Test = pad_sequences(X_Test,maxlen=1000,dtype='float32',padding='post')
+		Y_Test = pad_sequences(Y_Test,maxlen=1000,dtype='float32',padding='post',value=n_states)
+		Y_Test = Y_Test.reshape(Y_Test.shape[0],Y_Test.shape[1],1)
 	# np.savez('wsj0_phonelabels_NFrames',NFrames_Train=NFrames_Train,NFrames_Test=NFrames_Test)
 	# t = threading.Thread(target=ping)
 	# t.start()
@@ -204,6 +217,6 @@ def normalizeByUtterance():
 	print data
 #print(read_sen_labels_from_mdef('../wsj_all_cd30.mllt_cd_cont_4000/mdef'))
 # frame2state('../wsj/wsj0/statesegdir/40po031e.wv2.flac.stseg.txt', '../wsj_all_cd30.mllt_cd_cont_4000/mdef')
-genDataset('../wsj/wsj0/','etc/wsj0_train.fileids','etc/wsj0_dev.fileids','etc/wsj0_test.fileids','feat_cd_mls/','stateseg_ci_dir/','../en_us.ci_cont/mdef')
+genDataset('../wsj/wsj0/','etc/wsj0_train.fileids','etc/wsj0_dev.fileids','etc/wsj0_test.fileids','feat_cd_mls/','stateseg_ci_dir/','../en_us.ci_cont/mdef',keep_utts=True,context_len=5)
 # normalizeByUtterance()
 # ../wsj/wsj0/feat_mls/11_6_1/wsj0/sd_dt_20/00b/00bo0t0e.wv1.flac.mls 00bo0t0e.wv1.flac.stseg.txt

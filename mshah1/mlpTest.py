@@ -1,5 +1,5 @@
 import os
-CUDA_VISIBLE_DEVICES = '1'
+CUDA_VISIBLE_DEVICES = '0'
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 from keras.models import Sequential, Model
 from keras.optimizers import SGD,Adagrad, Adam
@@ -25,6 +25,8 @@ import keras.backend as K
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import array_ops
 from tfrbm import GBRBM,BBRBM
 from sys import stdout
 import time
@@ -44,7 +46,7 @@ def mlp1(input_dim,output_dim,depth,width,dropout=False,
 	BN=False, regularize=False, lin_boost=False):
 	print locals()
 	model = Sequential()
-	model.add(Dense(width, activation='sigmoid', input_dim=input_dim,
+	model.add(Dense(width, activation='sigmoid', input_shape=(1000,input_dim),
 					kernel_regularizer=regularizers.l2(0.05) if regularize else None))
 	if BN:
 		model.add(BatchNormalization())
@@ -69,32 +71,58 @@ def mlp1(input_dim,output_dim,depth,width,dropout=False,
 	return model
 
 def ctc_lambda_func(args):
-    y_pred, labels, input_length, label_length = args
-    return K.ctc_batch_cost(labels, y_pred, input_length, label_length)
+	y_pred, labels, input_length, label_length = args
+	label_length = math_ops.to_int32(array_ops.squeeze(label_length))
+	input_length = math_ops.to_int32(array_ops.squeeze(input_length))
+    # return K.ctc_batch_cost(labels, y_pred, input_length, label_length)
+	labels = K.ctc_label_dense_to_sparse(labels,label_length)
+	return tf.nn.ctc_loss(labels,y_pred,input_length,
+    				preprocess_collapse_repeated=False,
+    				ctc_merge_repeated=True,
+    				time_major=False)
+
+def ler(y_true, y_pred, **kwargs):
+    """
+        Label Error Rate. For more information see 'tf.edit_distance'
+    """
+    return tf.reduce_mean(tf.edit_distance(y_pred, y_true, **kwargs))
+
+def decode_output_shape(inputs_shape):
+    y_pred_shape, seq_len_shape = inputs_shape
+    return (y_pred_shape[:1], None)
+
+def decode(args):
+	y_pred, label_len = args
+	label_len = math_ops.to_int32(array_ops.squeeze(label_len))
+	ctc_labels = K.ctc_decode(y_pred,label_len)[0][0]
+	return K.ctc_label_dense_to_sparse(ctc_labels, label_len)
 
 def mlp_wCTC(input_dim,output_dim,depth,width,BN=False):
 	x = Input(name='x', shape=(1000,input_dim))
-	h = Dense(width,activation='sigmoid')(x)
-	if BN:
-		BatchNormalization()(h)
+	h = x
 	for i in range(depth-1):
 		h = Dense(width,activation='sigmoid')(h)
 		if BN:
 			BatchNormalization()(h)
-	h = Dense(output_dim)(h)
-	out = Activation('softmax', name='softmax')(h)
+	out = Dense(output_dim+1,name='out')(h)
+	# out = Activation('softmax', name='out')(h)
+	# a = 1.0507 * 1.67326
+	# b = -1
+	# # out = Lambda(lambda x : a * K.pow(x,3) + b)(h)
+	# out = Lambda(lambda x: a * K.exp(x) + b, name='out')(h)
+	y = Input(name='y',shape=[1000],dtype='int32')
+	x_len = Input(name='x_len', shape=[1],dtype='int32')
+	y_len = Input(name='y_len', shape=[1],dtype='int32')
 
-	y = Input(name='y',shape=[1000])
-	x_len = Input(name='x_len', shape=[1])
-	y_len = Input(name='y_len', shape=[1])
+	dec = Lambda(decode, output_shape=decode_output_shape, name='decoder')([out,x_len])
 
 	loss_out = Lambda(ctc_lambda_func, output_shape=(1,), name='ctc')([out, y, x_len, y_len])
-	model = Model(inputs=[x, y, x_len, y_len], outputs=loss_out)
+	model = Model(inputs=[x, y, x_len, y_len], outputs=[loss_out,dec])
 
+	sgd = SGD(lr=0.001, decay=1e-6, momentum=0.99, nesterov=True, clipnorm=5)
+	opt = Adam(lr=0.0001,clipnorm=5)
 	model.compile(loss={'ctc': lambda y_true, y_pred: y_pred},
-					optimizer='adam',
-					metrics=['accuracy'])
-
+					optimizer=opt)
 	return model
 
 def _bn_relu(input):
@@ -127,7 +155,7 @@ def mlp4(input_dim,output_dim,nConv,nBlocks,width, block_depth=2,
 		x = Reshape((11,input_dim/11,1))(inp)
 		for i in range(nConv):
 			print i
-			x = LocallyConnected2D(84,(8,8),padding='valid')(x)
+			x = LocallyConnected2D(84,(11,8),padding='valid')(x)
 			x = _bn_relu(x)
 			x = MaxPooling2D((6,6),strides=(2,2),padding='same')(x)
 		x = Flatten()(x)
@@ -220,21 +248,43 @@ def DBN_DNN(inp,nClasses,depth,width,batch_size=2048):
 		model.layers[i].set_weights(W)
 	re
 def gen_data(alldata,alllabels,batch_size):
-	n_batches = (alldata.shape[0] / batch_size) + (1 if alldata.shape[0]%batch_size != 0 else 0)
-	# nClasses = np.max(alllabels) + 1
-	nClasses = 4138
-	while 1:
-		idxs = range(alldata.shape[0])
-		np.random.shuffle(idxs)
-		for j in range(n_batches):
-			idx = idxs[j*batch_size:min((j+1)*batch_size, len(idxs))]
-			data = np.array(map(lambda x: alldata[x],idx))
-			labels = np.array(map(lambda x: alllabels[x],idx))
-			if len(labels.shape) == 1:
-				labels = to_categorical(labels,num_classes=nClasses)
+	# n_batches = (alldata.shape[0] / batch_size) + (1 if alldata.shape[0]%batch_size != 0 else 0)
+	# # nClasses = np.max(alllabels) + 1
+	# nClasses = 4138
+	# while 1:
+	# 	idxs = range(alldata.shape[0])
+	# 	np.random.shuffle(idxs)
+	# 	for j in range(n_batches):
+	# 		idx = idxs[j*batch_size:min((j+1)*batch_size, len(idxs))]
+	# 		data = np.array(map(lambda x: alldata[x],idx))
+	# 		labels = np.array(map(lambda x: alllabels[x],idx))
+	# 		if len(labels.shape) == 1:
+	# 			labels = to_categorical(labels,num_classes=nClasses)
 			
-			yield (data,labels)
-
+	# 		yield (data,labels)
+	while 1:
+		for i in range(batch_size,alldata.shape[0]+1,batch_size):
+			x = alldata[i-batch_size:i]
+			y = alllabels[i-batch_size:i].reshape(batch_size,alllabels.shape[1])
+			y_len = []
+			for b in y:
+				# print b[-1], int(b[-1]) != 138
+				pad_len = 0
+				while pad_len < len(b) and int(b[pad_len]) != 138:
+					pad_len += 1
+				y_len.append(pad_len)
+			y_len = np.array(y_len)
+			x_len = y_len
+			# x_len = np.array(map(lambda x: len(x), x))
+			# y_len = np.array(map(lambda x: len(x), y))
+			# print x.shape,y.shape,x_len,y_len
+			inputs = {'x': x,
+					'y': y,
+					'x_len': x_len,
+					'y_len': y_len}
+			outputs = {'ctc': np.ones([batch_size]),
+						'decoder': y}
+			yield(inputs,outputs)
 		
 
 def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],outEqIn=False):
@@ -288,17 +338,17 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,
 		callback_arr = [ModelCheckpoint('%s_CP.h5' % modelName,save_best_only=True,verbose=1),
 						ReduceLROnPlateau(patience=5,factor=0.5,min_lr=10**(-6), verbose=1),
 						CSVLogger(modelName+'.csv',append=True)]
-		batch_size = 512
+		batch_size = 2
 		if fit_generator == None:
 			history = model.fit(x_train,y_train,epochs=100,batch_size=batch_size,
 								initial_epoch=init_epoch,
 								validation_data=(x_test,y_test),
 								callbacks=callback_arr)
 		else:
-			history = model.fit_generator(fit_generator(x_train,y_train,meta['framePos_Train']),
-											steps_per_epoch=len(meta['framePos_Train']), epochs=30,
-											validation_data=fit_generator(x_test,y_test,meta['framePos_Dev']),
-											validation_steps = len(meta['framePos_Dev']),
+			history = model.fit_generator(fit_generator(x_train,y_train,batch_size),
+											steps_per_epoch=x_train.shape[0]/batch_size, epochs=30,
+											validation_data=fit_generator(x_test,y_test,batch_size),
+											validation_steps = x_test.shape[0],
 											callbacks=callback_arr)
 		print 'saving model...'
 		model.save(modelName+'.h5')
@@ -332,9 +382,9 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,
 if __name__ == '__main__':
 	print 'PROCESS-ID =', os.getpid()
 	print 'loading data...'
-	meta = np.load('wsj0_phonelabels_meta.npz')
-	x_train = np.load('wsj0_phonelabels_train.npy',mmap_mode='r')
-	y_train = np.load('wsj0_phonelabels_train_labels.npy')
+	meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
+	x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
+	y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
 	# end = x_train.shape[0] % 2048
 	# x_train = x_train[:-end]
 	# y_train = y_train[:-end]
@@ -344,8 +394,8 @@ if __name__ == '__main__':
 	# y_train = to_categorical(y_train, num_classes = nClasses)
 
 	print 'loading test data...'
-	x_test = np.load('wsj0_phonelabels_dev.npy',mmap_mode='r')
-	y_test = np.load('wsj0_phonelabels_dev_labels.npy')
+	x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
+	y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
 	# # # end = x_test.shape[0] % 2048
 	# # # x_test = x_test[:-end]
 	# # # y_test = y_test[:-end]
@@ -356,17 +406,17 @@ if __name__ == '__main__':
 
 	print 'initializing model...'
 	# model = load_model('dbn-3x2048-sig-adagrad_CP.h5')
-	# model = mlp4(x_train.shape[1]*11, nClasses,1,2,2560,shortcut=False,BN=True,conv=True,dropout=True,regularize=False)
-	# model = mlp1(x_train.shape[1]*11, nClasses,2,2048,BN=True,regularize=False,lin_boost=False)
-	model = mlp_wCTC(x_train.shape[1]*11,nClasses,3,2048,BN=True)
+	# model = mlp4(x_train.shape[-1], nClasses,1,1,2048,shortcut=False,BN=True,conv=True,dropout=True,regularize=False)
+	# model = mlp1(x_train.shape[-1], nClasses,2,2048,BN=True,regularize=False,lin_boost=False)
+	model = mlp_wCTC(x_train.shape[-1],nClasses,3,2048,BN=False)
 	# model = load_model('test_CP.h5')
 	# model = DBN_DNN(x_train, nClasses,5,2560,batch_size=128)
 	# model = load_model('mlp4-2x2560-cd-adam-bn-drop-conv-noshort_CP.h5')
-	fg = gen_bracketed_data(context_len=5,for_CTC=True,fix_length=True)
-	trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp_wCTC-3x2048-ci-adam-bn',fit_generator=fg)
+	# fg = gen_bracketed_data(context_len=5,for_CTC=True,fix_length=True)
+	trainNtest(model,x_train,y_train,x_test,y_test,meta,'test',fit_generator=gen_data)
 
 
-	# model = load_model('newmodel')
+	# model = load_model('bestModels/best_CD.h5')
 	# print model.summary()
 	# getPredsFromFilelist(model,'../wsj/wsj0/single_dev.txt','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/single_dev_NN/','.sen',meta['state_freq_Train'],context_len=5,weight=0.00035457)
 	# getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores_dev2/','.sen',meta['state_freq_Train'])
@@ -376,8 +426,27 @@ if __name__ == '__main__':
 	# file_idx = list(meta['filenames_Dev']).index(f)
 	# # print file_idx
 	# split = lambda x: x[sum(meta['framePos_Dev'][:file_idx]):sum(meta['framePos_Dev'][:file_idx+1])]
-	# # pred = model.evaluate(split(x_test),split(y_test),verbose=1)
-	# pred = model.predict(split(x_test),verbose=1)
+	# # # pred = model.evaluate(split(x_test),split(y_test),verbose=1)
+	# data = split(x_test)
+	# context_len = 5
+	# pad_top = np.zeros((context_len,data.shape[1]))
+	# pad_bot = np.zeros((context_len,data.shape[1]))
+	# padded_data = np.concatenate((pad_top,data),axis=0)
+	# padded_data = np.concatenate((padded_data,pad_bot),axis=0)
+
+	# data = []
+	# for j in range(context_len,len(padded_data) - context_len):
+	# 	new_row = padded_data[j - context_len: j + context_len + 1]
+	# 	new_row = new_row.flatten()
+	# 	data.append(new_row)
+	# data = np.array(data)
+	# pred = model.predict(data,verbose=1)
+	# pred = pred.reshape(1,pred.shape[0],pred.shape[1])
+	# print pred.shape
+	# [bp],out = K.ctc_decode(pred,[pred.shape[1]])
+	# print K.eval(bp), len(K.eval(bp)[0])
+	# print K.eval(out)
+
 	# # print pred
 	# # writeSenScores('senScores',pred)
 	# np.save('pred.npy',np.log(pred)/np.log(1.001))
