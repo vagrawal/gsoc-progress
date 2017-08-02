@@ -210,3 +210,17 @@ Got some results and I am working on refactoring the code and writing documentat
 # 30 July
 
 I couldn't get any time today, so no progress today.
+
+# 31 July - 1 August
+
+I have been running the training for a few days. Here are the results with and without using LM:
+
+Without LM: 23.7%
+LM with weight 0.1: 23.1%
+LM with weight 0.2: 24.9%
+
+The model size is very big for training with only a small part of wsj0 dataset. The training set achieves WER of around 7%(without LM). I think if I run the trained model on wsj1 for a epoch, WER will considerably improve on the validation set. I will try this tomorrow.
+
+Also, there is very little improvement with LM. It looks LM introduces heavy weight for longer sentences, and for that I am working on weight penalization for the compensation. I made a mistake in that, and I will test with different penalization values tomorrow. Another thing to note here is that it's not LM directly from transcriptions and transcriptions contains out of vocabulary words according to the LM.
+
+I also spent time in refactoring the code to release it for others to easily test, and I am making more options available via command line interface.
