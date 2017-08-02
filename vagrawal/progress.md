@@ -224,3 +224,11 @@ The model size is very big for training with only a small part of wsj0 dataset. 
 Also, there is very little improvement with LM. It looks LM introduces heavy weight for longer sentences, and for that I am working on weight penalization for the compensation. I made a mistake in that, and I will test with different penalization values tomorrow. Another thing to note here is that it's not LM directly from transcriptions and transcriptions contains out of vocabulary words according to the LM.
 
 I also spent time in refactoring the code to release it for others to easily test, and I am making more options available via command line interface.
+
+# 2 August
+
+Added convolutional layer below encoding layers.
+
+Apart from that, I am working on a simple custom dataset format, which can be easily converted from wsj or any other dataset. Sphinx current format is overkill for this job, as I only need audio, transcription and speaker ID.
+
+Also running a experiment.
