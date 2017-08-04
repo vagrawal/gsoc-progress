@@ -232,3 +232,13 @@ Added convolutional layer below encoding layers.
 Apart from that, I am working on a simple custom dataset format, which can be easily converted from wsj or any other dataset. Sphinx current format is overkill for this job, as I only need audio, transcription and speaker ID.
 
 Also running a experiment.
+
+# 3 August
+
+Couldn't find much time.
+
+# 4 August
+
+I have created another repo that contains packaged code which could directly be installed by pip. I have added comments to all the functions and done heavy refactoring. I am still in process of writing data preparation docs and the migration is still a WIP.
+
+The repo can be accessed here: https://github.com/vagrawal/deepsphinx
