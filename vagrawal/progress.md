@@ -242,3 +242,9 @@ Couldn't find much time.
 I have created another repo that contains packaged code which could directly be installed by pip. I have added comments to all the functions and done heavy refactoring. I am still in process of writing data preparation docs and the migration is still a WIP.
 
 The repo can be accessed here: https://github.com/vagrawal/deepsphinx
+
+# 5 August
+
+I continued to rewrite most parts of the code as significant number of hacks was introduced in the codebase. See another repo for details.
+
+My plan is to delete codes from this repo and finish the code in second repo that can be readily adopted by CMU Sphinx.
