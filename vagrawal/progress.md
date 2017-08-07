@@ -251,8 +251,16 @@ My plan is to delete codes from this repo and finish the code in second repo tha
 
 # 6 August
 
-To report the accuracy for the current code in the test situations, I downloaded wsj1 and converted the transcript format to match the required one.
+To report the accuracy for the current code in the test situation, I downloaded wsj1 and converted the transcript format to match the required one. There is still some formatting of directory required before I can start training on the merged corpus.
 
-Refactoring and packaging of code is almost done. Documentation is in progress. It is taking more time than I thought.
+Refactoring and packaging of the code is almost done. Documentation is in progress. It is taking more time than I thought.
 
-I aim to meet the published accuracy(<10% WER) within a day or two, as in my interpretation only the size of the dataset was the reason validation WER was not decreasing below 20%. Otherwise, I believe the model and LM is working perfectly.
+I aim to meet the published accuracy(<10% WER) within a day or two, as in my interpretation only the size of the dataset is the reason validation WER can not decrease below 20%. Otherwise, I believe the model and LM is working perfectly.
+
+# 7 August
+
+Most of my day had been spent on combining wsj0 and wsj1 corpus, due to many inconsistencies that were present in our modified version of the corpus. Transcripts format were also slightly different, so I had to rely on common sense to make it similar by substitution.
+
+Also, I regenerated LM and FST just from wsj. Earlier I was using CMU Sphinx LM which is big and there were many OOV words in wsj with respect to that.
+
+Now that I can run wsj1, I will post result as soon as the model converges. At this time, WER is 20% and decreasing.
