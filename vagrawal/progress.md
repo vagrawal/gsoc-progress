@@ -248,3 +248,11 @@ The repo can be accessed here: https://github.com/vagrawal/deepsphinx
 I continued to rewrite most parts of the code as significant number of hacks was introduced in the codebase. See another repo for details.
 
 My plan is to delete codes from this repo and finish the code in second repo that can be readily adopted by CMU Sphinx.
+
+# 6 August
+
+To report the accuracy for the current code in the test situations, I downloaded wsj1 and converted the transcript format to match the required one.
+
+Refactoring and packaging of code is almost done. Documentation is in progress. It is taking more time than I thought.
+
+I aim to meet the published accuracy(<10% WER) within a day or two, as in my interpretation only the size of the dataset was the reason validation WER was not decreasing below 20%. Otherwise, I believe the model and LM is working perfectly.
