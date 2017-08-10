@@ -264,3 +264,9 @@ Most of my day had been spent on combining wsj0 and wsj1 corpus, due to many inc
 Also, I regenerated LM and FST just from wsj. Earlier I was using CMU Sphinx LM which is big and there were many OOV words in wsj with respect to that.
 
 Now that I can run wsj1, I will post result as soon as the model converges. At this time, WER is 20% and decreasing.
+
+# 9 August
+
+I have cleaned the transcripts and created it from NDX files, to replicate the setup. I am traning on si284 and evaluating on dev93. I am getting around 15% WER from the setup, somewhat worse than expected. Now I am testing it with two convolution layers added above the filterbank coefficients and hoping that it will improve the results.
+
+I have added some documentation and code to the packaged code in the second repo.
