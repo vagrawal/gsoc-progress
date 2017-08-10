@@ -5,6 +5,14 @@ import pylab as pl
 from sys import stdout
 import os
 from keras.preprocessing.sequence import pad_sequences
+from scipy.sparse import coo_matrix
+from sklearn.preprocessing import StandardScaler
+
+def dense2sparse(a):
+	rows,cols = a.nonzero()
+	data = map(lambda i: a[rows[i],cols[i]], range(rows.shape[0]))
+	return coo_matrix((data,(rows,cols)), shape=a.shape,dtype='int32')
+	
 def readMFC(fname,nFeats):
 	data = []
 	with open(fname,'rb') as f:
@@ -128,13 +136,13 @@ def writeSenScores(filename,scores,freqs,weight,offset):
 	s = """s3
 version 0.1
 mdef_file ../../en_us.cd_cont_4000/mdef
-n_sen 4138
+n_sen 138
 logbase 1.000100
 endhdr
 """
 	s += struct.pack('I',0x11223344)
 	# print freqs
-	# scores /= freqs + (1.0 / len(freqs))
+	scores /= freqs + (1.0 / len(freqs))
 	scores = np.log(scores)/np.log(1.0001)
 	scores *= -1
 	scores -= np.min(scores,axis=1).reshape(-1,1)
@@ -174,8 +182,9 @@ def getPredsFromArray(model,data,nFrames,filenames,res_dir,res_ext,freqs,preds_i
 		pos += nFrames[i]
 
 def getPredsFromFilelist(model,filelist,file_dir,file_ext,
-							res_dir,res_ext,freqs,context_len=4,
-							weight=1,offset=0):
+							res_dir,res_ext,freqs,n_feat=40,context_len=4,
+							weight=1,offset=0, data_preproc_fn=None,
+							data_postproc_fn=None):
 	with open(filelist) as f:
 		files = f.readlines()
 		files = map(lambda x: x.strip(),files)
@@ -189,7 +198,7 @@ def getPredsFromFilelist(model,filelist,file_dir,file_ext,
 		if not os.path.exists(f):
 			print ("\n",f)
 			continue
-		data = np.loadtxt(f)
+		data = readMFC(f,n_feat)
 		data = scaler.fit_transform(data)
 
 		pad_top = np.zeros((context_len,data.shape[1])) + data[0]
@@ -203,12 +212,24 @@ def getPredsFromFilelist(model,filelist,file_dir,file_ext,
 			new_row = new_row.flatten()
 			data.append(new_row)
 		data = np.array(data)
-		preds = model.predict(data,batch_size=data.shape[0])
-		
+		if data_preproc_fn != None:
+			_data = data_preproc_fn(data)
+			preds = model.predict(_data)
+			preds = np.squeeze(preds)
+		else:
+			preds = model.predict(data)
+	
+		if data_postproc_fn != None:
+			preds = data_postproc_fn(preds)
+		if preds.shape[0] != data.shape[0]:
+			preds = preds[:data.shape[0]]
+		# print preds.shape
 		res_file_path = res_dir+files[i]+res_ext
 		dirname = os.path.dirname(res_file_path)
 		if not os.path.exists(dirname):
 			os.makedirs(dirname)
 		writeSenScores(res_file_path,preds,freqs,weight,offset)
 
-# print(ctc_labels('aa-hello',['-']))
+# a = dense2sparse(np.array([[1,2,3],[4,0,6]]))
+# print a.shape
+# print np.asarray(a,dtype=long)

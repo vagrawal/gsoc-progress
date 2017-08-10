@@ -1,5 +1,5 @@
 import os
-CUDA_VISIBLE_DEVICES = '0'
+CUDA_VISIBLE_DEVICES = '1'
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 from keras.models import Sequential, Model
 from keras.optimizers import SGD,Adagrad, Adam
@@ -14,13 +14,15 @@ from keras.layers import (
 	LocallyConnected2D, 
 	MaxPooling2D, 
 	Reshape, 
-	Flatten)
+	Flatten,
+	Masking)
 from keras.layers.core import Lambda
 from keras.layers.merge import add, concatenate
 from keras.utils import to_categorical, plot_model
 from keras.models import load_model, Model
 from keras.callbacks import History,ModelCheckpoint,CSVLogger,ReduceLROnPlateau
 from keras import regularizers
+from keras.preprocessing.sequence import pad_sequences
 import keras.backend as K
 import numpy as np
 import matplotlib.pyplot as plt
@@ -37,6 +39,7 @@ import threading
 import struct
 import resnet
 from utils import *
+import ctc
 # import matplotlib as mpl
 # print mpl.matplotlib_fname()
 # mpl.rcParams['backend'] = 'agg'
@@ -63,23 +66,89 @@ def mlp1(input_dim,output_dim,depth,width,dropout=False,
 		model.add(Dense(output_dim))	
 		model.add(Lambda(lambda x: K.exp(x)))
 	else:	
-		model.add(Dense(output_dim, activation='softmax'))
+		model.add(Dense(output_dim, name='out'))
+		model.add(Activation('softmax', name='softmax'))
 	opt = Adam(lr=10/(np.sqrt(input_dim * width * output_dim)))
 	model.compile(optimizer=opt,
 	              loss='sparse_categorical_crossentropy',
 	              metrics=['accuracy'])
 	return model
 
-def ctc_lambda_func(args):
+def get(t,x,y):
+	return K.gather(K.gather(t,x),y)
+def get_in_alpha(a,t,s):
+	idxs,vals = a
+	print idxs
+	idx = idxs.index([t,s])
+	return vals[idx]
+
+def calc_alpha(p,input_length,label_length,symbols):
+	alpha = []
+	z = tf.Variable(tf.zeros_like(p[0]))
+	target = K.gather(p[0], K.gather(symbols,0))
+	z = tf.scatter_update(z, K.gather(symbols,0), target)
+	alpha.append(z)
+	return alpha
+def ctc_loss(args):
 	y_pred, labels, input_length, label_length = args
-	label_length = math_ops.to_int32(array_ops.squeeze(label_length))
-	input_length = math_ops.to_int32(array_ops.squeeze(input_length))
+	label_length = K.cast(tf.squeeze(label_length), 'int32')
+	input_length = K.cast(tf.squeeze(input_length), 'int32')
+	alpha = []
+	
+	t_arr = tf.TensorArray(tf.float32,1,dynamic_size=True,infer_shape=True)
+	Y = t_arr.unstack(y_pred)
+	
+	t_arr = tf.TensorArray(tf.int32,1,dynamic_size=True,infer_shape=False)
+	T = t_arr.unstack(input_length)
+	
+	t_arr = tf.TensorArray(tf.int32,1,dynamic_size=True,infer_shape=False)
+	S = t_arr.unstack(label_length)
+	
+	t_arr = tf.TensorArray(tf.int32,1,dynamic_size=True,infer_shape=False)
+	L = t_arr.unstack(labels)
+
+	b = tf.constant(0,dtype='int32')
+	t = tf.constant(0,dtype='int32')
+	s = tf.constant(0,dtype='int32')
+
+	while_condition_Y = lambda x: K.less(x,Y.size())
+	while_condition_S = lambda x: K.less(x,S.size())
+	z = tf.Variable(tf.zeros_like(tf.unstack(Y.read(0))[0]))
+	def calc_alpha(p,input_length,label_length,symbols):
+		alpha = []
+		target = K.gather(p[0], K.gather(symbols,0))		
+		alpha.append(tf.scatter_update(z, K.gather(symbols,0), target))
+
+		while_condition_T = lambda x: K.less(x,T.size())
+		new_row = z
+
+		return alpha
+
+	def body_Y(b):
+		alpha.append(calc_alpha(tf.unstack(Y.read(b)), T.read(b), S.read(b), L.read(b)))
+		return [tf.add(b,1)]
+	tf.while_loop(while_condition_Y,body_Y,[b],back_prop=False)
+	# tf.map_fn(lambda p: calc_alpha(tf.unstack(p),alpha,input_length,label_length,labels), y_pred, back_prop=False)
+	print alpha
+	labels = K.ctc_label_dense_to_sparse(labels,label_length)
+	return tf.nn.ctc_loss(labels,y_pred,input_length,
+    				preprocess_collapse_repeated=False,
+    				ctc_merge_repeated=True,
+    				time_major=False,
+    				ignore_longer_outputs_than_inputs=True)
+
+def ctc_lambda_func(args):
+	import tensorflow as tf
+	y_pred, labels, input_length, label_length = args
+	label_length = K.cast(tf.squeeze(label_length), 'int32')
+	input_length = K.cast(tf.squeeze(input_length), 'int32')
     # return K.ctc_batch_cost(labels, y_pred, input_length, label_length)
 	labels = K.ctc_label_dense_to_sparse(labels,label_length)
 	return tf.nn.ctc_loss(labels,y_pred,input_length,
     				preprocess_collapse_repeated=False,
     				ctc_merge_repeated=True,
-    				time_major=False)
+    				time_major=False,
+    				ignore_longer_outputs_than_inputs=True)
 
 def ler(y_true, y_pred, **kwargs):
     """
@@ -92,39 +161,98 @@ def decode_output_shape(inputs_shape):
     return (y_pred_shape[:1], None)
 
 def decode(args):
+	import tensorflow as tf
 	y_pred, label_len = args
-	label_len = math_ops.to_int32(array_ops.squeeze(label_len))
-	ctc_labels = K.ctc_decode(y_pred,label_len)[0][0]
+	label_len = K.cast(tf.squeeze(label_len), 'int32')
+	# ctc_labels = tf.nn.ctc_greedy_decoder(y_pred, label_len)[0][0]
+	# return ctc_labels
+	ctc_labels = K.ctc_decode(y_pred,label_len,greedy=False)[0][0]
 	return K.ctc_label_dense_to_sparse(ctc_labels, label_len)
 
+def ler(args):
+	y_pred, y_true, input_length, label_length = args
+	label_length = K.cast(tf.squeeze(label_length), 'int32')
+	input_length = K.cast(tf.squeeze(input_length), 'int32')
+
+	y_pred = K.ctc_decode(y_pred,input_length)[0][0]
+	# y_pred = tf.nn.ctc_greedy_decoder(y_pred,input_length)[0][0]
+	y_pred = K.cast(y_pred,'int32')
+	# y_pred = math_ops.to_int32(y_pred)
+	# y_true = math.ops.to_int64(y_true)
+	y_true = K.ctc_label_dense_to_sparse(y_true,label_length)
+	y_pred = K.ctc_label_dense_to_sparse(y_pred,input_length)
+	return tf.reduce_mean(tf.edit_distance(y_pred, y_true))
+def ler(y_true, y_pred, **kwargs):
+    """
+        Label Error Rate. For more information see 'tf.edit_distance'
+    """
+    return tf.reduce_mean(tf.edit_distance(y_pred, y_true, **kwargs))
+def dummy_loss(y_true,y_pred):
+	return y_pred
+def decoder_dummy_loss(y_true,y_pred):
+	return K.zeros((1,))
 def mlp_wCTC(input_dim,output_dim,depth,width,BN=False):
+	print locals()
 	x = Input(name='x', shape=(1000,input_dim))
 	h = x
-	for i in range(depth-1):
-		h = Dense(width,activation='sigmoid')(h)
+	h = Masking()(h)
+	for i in range(depth):
+		h = Dense(width)(h)
 		if BN:
-			BatchNormalization()(h)
-	out = Dense(output_dim+1,name='out')(h)
-	# out = Activation('softmax', name='out')(h)
+			h = BatchNormalization()(h)
+		h = Activation('sigmoid')(h)
+	out = Dense(output_dim,name='out')(h)
+	softmax = Activation('softmax', name='softmax')(out)
 	# a = 1.0507 * 1.67326
 	# b = -1
 	# # out = Lambda(lambda x : a * K.pow(x,3) + b)(h)
 	# out = Lambda(lambda x: a * K.exp(x) + b, name='out')(h)
+	y = Input(name='y',shape=[None,],dtype='int32')
+	x_len = Input(name='x_len', shape=[1],dtype='int32')
+	y_len = Input(name='y_len', shape=[1],dtype='int32')
+
+	dec = Lambda(decode, output_shape=decode_output_shape, name='decoder')([out,x_len])
+	# edit_distance = Lambda(ler, output_shape=(1,), name='edit_distance')([out,y,x_len,y_len])
+
+	loss_out = Lambda(ctc_lambda_func, output_shape=(1,), name='ctc')([out, y, x_len, y_len])
+	model = Model(inputs=[x, y, x_len, y_len], outputs=[loss_out,dec,softmax])
+
+	sgd = SGD(lr=0.001, decay=1e-6, momentum=0.99, nesterov=True, clipnorm=5)
+	opt = Adam(lr=0.0001, clipnorm=5)
+	model.compile(loss={'ctc': dummy_loss,
+						'decoder': decoder_dummy_loss,
+						'softmax': 'sparse_categorical_crossentropy'},
+					optimizer=opt,
+					metrics={'decoder': ler,
+							 'softmax': 'accuracy'},
+					loss_weights=[1,0,0])
+	return model
+def ctc_model(model):
+	x = model.get_layer(name='x').input
+
+	out = model.get_layer(name='out').output
+	softmax = Activation('softmax', name='softmax')(out)
+
 	y = Input(name='y',shape=[1000],dtype='int32')
 	x_len = Input(name='x_len', shape=[1],dtype='int32')
 	y_len = Input(name='y_len', shape=[1],dtype='int32')
 
 	dec = Lambda(decode, output_shape=decode_output_shape, name='decoder')([out,x_len])
+	# edit_distance = Lambda(ler, output_shape=(1,), name='edit_distance')([out,y,x_len,y_len])
 
 	loss_out = Lambda(ctc_lambda_func, output_shape=(1,), name='ctc')([out, y, x_len, y_len])
-	model = Model(inputs=[x, y, x_len, y_len], outputs=[loss_out,dec])
+	model = Model(inputs=[x, y, x_len, y_len], outputs=[loss_out,dec,softmax])
 
 	sgd = SGD(lr=0.001, decay=1e-6, momentum=0.99, nesterov=True, clipnorm=5)
-	opt = Adam(lr=0.0001,clipnorm=5)
-	model.compile(loss={'ctc': lambda y_true, y_pred: y_pred},
-					optimizer=opt)
+	opt = Adam(lr=0.0001, clipnorm=5)
+	model.compile(loss={'ctc': dummy_loss,
+						'decoder': decoder_dummy_loss,
+						'softmax': 'sparse_categorical_crossentropy'},
+					optimizer=opt,
+					metrics={'decoder': ler,
+							 'softmax': 'accuracy'},
+					loss_weights=[1,0,0])
 	return model
-
 def _bn_relu(input):
     """Helper to build a BN -> relu block
     """
@@ -150,9 +278,10 @@ def mlp4(input_dim,output_dim,nConv,nBlocks,width, block_depth=2,
 	print locals()
 	if block_width == None:
 		block_width = width
-	inp = Input(shape=(input_dim,))
+	inp = Input(shape=(1000,input_dim), name='x')
+	x = inp
 	if conv:
-		x = Reshape((11,input_dim/11,1))(inp)
+		x = Reshape((11,input_dim/11,1))(x)
 		for i in range(nConv):
 			print i
 			x = LocallyConnected2D(84,(11,8),padding='valid')(x)
@@ -190,15 +319,16 @@ def mlp4(input_dim,output_dim,nConv,nBlocks,width, block_depth=2,
 		b = 0.4
 		z = Lambda(lambda x : a * K.pow(x,3) + b)(x)
 	else:
-		z = Dense(output_dim, activation='softmax')(x)
+		z = Dense(output_dim, name='out')(x)
+		z = Activation('softmax', name='softmax')(z)
 	model = Model(inputs=inp, outputs=z)
-	if parallelize:
-		model = make_parallel(model, len(CUDA_VISIBLE_DEVICES.split(',')))
-	opt = Adam(lr=25/(np.sqrt(input_dim * width * output_dim)))
-	# opt = SGD(lr=1/(np.sqrt(input_dim * width)), decay=1e-6, momentum=0.9, nesterov=True)
-	model.compile(optimizer=opt,
-	              loss='sparse_categorical_crossentropy',
-	              metrics=['accuracy'])
+	# if parallelize:
+	# 	model = make_parallel(model, len(CUDA_VISIBLE_DEVICES.split(',')))
+	# opt = Adam(lr=25/(np.sqrt(input_dim * width * output_dim)))
+	# # opt = SGD(lr=1/(np.sqrt(input_dim * width)), decay=1e-6, momentum=0.9, nesterov=True)
+	# model.compile(optimizer=opt,
+	#               loss='sparse_categorical_crossentropy',
+	#               metrics=['accuracy'])
 	return model
 
 def resnet_wrapper(input_dim,output_dim):
@@ -216,10 +346,11 @@ def DBN_DNN(inp,nClasses,depth,width,batch_size=2048):
 	bias = []
 	# batch_size = inp.shape
 	nEpoches = 5
-
+	if len(inp.shape) == 3:
+		inp = inp.reshape((inp.shape[0] * inp.shape[1],inp.shape[2]))
 	sigma = np.std(inp)
 	# sigma = 1
-	rbm = GBRBM(n_visible=inp.shape[1],n_hidden=width,learning_rate=0.002, momentum=0.90, use_tqdm=True,sample_visible=True,sigma=sigma)
+	rbm = GBRBM(n_visible=inp.shape[-1],n_hidden=width,learning_rate=0.002, momentum=0.90, use_tqdm=True,sample_visible=True,sigma=sigma)
 	rbm.fit(inp,n_epoches=5,batch_size=batch_size,shuffle=True)
 	RBMs.append(rbm)
 	for i in range(depth - 1):
@@ -227,7 +358,7 @@ def DBN_DNN(inp,nClasses,depth,width,batch_size=2048):
 		rbm = BBRBM(n_visible=width,n_hidden=width,learning_rate=0.02, momentum=0.90, use_tqdm=True)
 		for e in range(nEpoches):
 			batch_size *= 1 + (e*0.5)
-			n_batches = (inp.shape[0] / batch_size) + (1 if inp.shape[0]%batch_size != 0 else 0)
+			n_batches = (inp.shape[-2] / batch_size) + (1 if inp.shape[-2]%batch_size != 0 else 0)
 			for j in range(n_batches):
 				stdout.write("\r%d batch no %d/%d epoch no %d/%d" % (int(time.time()),j+1,n_batches,e,nEpoches))
 				stdout.flush()
@@ -246,22 +377,10 @@ def DBN_DNN(inp,nClasses,depth,width,batch_size=2048):
 	for i in range(len(weights)):
 		W = [weights[i],bias[i]]
 		model.layers[i].set_weights(W)
-	re
+	return model
+# def gen_data(active):
+
 def gen_data(alldata,alllabels,batch_size):
-	# n_batches = (alldata.shape[0] / batch_size) + (1 if alldata.shape[0]%batch_size != 0 else 0)
-	# # nClasses = np.max(alllabels) + 1
-	# nClasses = 4138
-	# while 1:
-	# 	idxs = range(alldata.shape[0])
-	# 	np.random.shuffle(idxs)
-	# 	for j in range(n_batches):
-	# 		idx = idxs[j*batch_size:min((j+1)*batch_size, len(idxs))]
-	# 		data = np.array(map(lambda x: alldata[x],idx))
-	# 		labels = np.array(map(lambda x: alllabels[x],idx))
-	# 		if len(labels.shape) == 1:
-	# 			labels = to_categorical(labels,num_classes=nClasses)
-			
-	# 		yield (data,labels)
 	while 1:
 		for i in range(batch_size,alldata.shape[0]+1,batch_size):
 			x = alldata[i-batch_size:i]
@@ -274,16 +393,26 @@ def gen_data(alldata,alllabels,batch_size):
 					pad_len += 1
 				y_len.append(pad_len)
 			y_len = np.array(y_len)
-			x_len = y_len
+			x_len = []
+			for b in x:
+				# print b[-1], int(b[-1]) != 138
+				pad_len = 0
+				while pad_len < len(b) and b[pad_len].any():
+					pad_len += 1
+				x_len.append(pad_len)
+			x_len = np.array(x_len)
 			# x_len = np.array(map(lambda x: len(x), x))
 			# y_len = np.array(map(lambda x: len(x), y))
 			# print x.shape,y.shape,x_len,y_len
+			# print y.shape
+			# y = dense2sparse(y)
 			inputs = {'x': x,
 					'y': y,
 					'x_len': x_len,
 					'y_len': y_len}
 			outputs = {'ctc': np.ones([batch_size]),
-						'decoder': y}
+						'decoder': dense2sparse(y),
+						'softmax': y.reshape(batch_size,y.shape[1],1)}
 			yield(inputs,outputs)
 		
 
@@ -291,7 +420,7 @@ def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],outEqIn=False):
 	print model.summary()
 	layers = model.layers
 	output = layers[-1]
-	outdim = output.output_shape[1]
+	outdim = output.output_shape[-1]
 	for i in range(len(layers) - 1):
 		if i in skip_layers:
 			print 'skipping layer ',i
@@ -327,12 +456,14 @@ def preTrain(model,modelName,x_train,y_train,meta,skip_layers=[],outEqIn=False):
 
 def trainNtest(model,x_train,y_train,x_test,y_test,meta,
 				modelName,testOnly=False,pretrain=False,
-				init_epoch=0, fit_generator=None):
+				init_epoch=0, fit_generator=None, ctc_train=False):
 	print 'TRAINING MODEL:',modelName
 	if not testOnly:
 		if pretrain:
 			print 'pretraining model...'
 			model = preTrain(model,modelName,x_train,y_train,meta)
+		if ctc_train:
+			model = ctc_model(model)
 		print model.summary()
 		print 'starting fit...'
 		callback_arr = [ModelCheckpoint('%s_CP.h5' % modelName,save_best_only=True,verbose=1),
@@ -346,10 +477,16 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,
 								callbacks=callback_arr)
 		else:
 			history = model.fit_generator(fit_generator(x_train,y_train,batch_size),
-											steps_per_epoch=x_train.shape[0]/batch_size, epochs=30,
+											steps_per_epoch=x_train.shape[0]/batch_size, epochs=75,
 											validation_data=fit_generator(x_test,y_test,batch_size),
 											validation_steps = x_test.shape[0],
 											callbacks=callback_arr)
+		model = Model(inputs=[model.get_layer(name='x').input],
+						outputs=[model.get_layer(name='softmax').output])
+		print model.summary()
+		model.compile(loss='sparse_categorical_crossentropy',
+						optimizer='adam',
+						metrics=['accuracy'])
 		print 'saving model...'
 		model.save(modelName+'.h5')
 		# model.save_weights(modelName+'_W.h5')
@@ -382,20 +519,22 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,
 if __name__ == '__main__':
 	print 'PROCESS-ID =', os.getpid()
 	print 'loading data...'
-	meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
-	x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
-	y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
+	meta = np.load('wsj0_phonelabels_bracketed_mini_meta.npz')
+	x_train = np.load('wsj0_phonelabels_bracketed_mini_train.npy',mmap_mode='r')
+	# train_active = np.load('wsj0_phonelabels_bracketed_train_active.npy')
+	y_train = np.load('wsj0_phonelabels_bracketed_mini_trans_train_labels.npy')
 	# end = x_train.shape[0] % 2048
 	# x_train = x_train[:-end]
 	# y_train = y_train[:-end]
-	nClasses = 139
+	nClasses = int(np.max(y_train)) + 1
 	print nClasses
 	# print 'transforming labels...'
 	# y_train = to_categorical(y_train, num_classes = nClasses)
 
 	print 'loading test data...'
-	x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
-	y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
+	x_test = np.load('wsj0_phonelabels_bracketed_mini_dev.npy',mmap_mode='r')
+	# test_active = np.load('wsj0_phonelabels_bracketed_dev_active.npy')
+	y_test = np.load('wsj0_phonelabels_bracketed_mini_trans_dev_labels.npy')
 	# # # end = x_test.shape[0] % 2048
 	# # # x_test = x_test[:-end]
 	# # # y_test = y_test[:-end]
@@ -406,27 +545,40 @@ if __name__ == '__main__':
 
 	print 'initializing model...'
 	# model = load_model('dbn-3x2048-sig-adagrad_CP.h5')
-	# model = mlp4(x_train.shape[-1], nClasses,1,1,2048,shortcut=False,BN=True,conv=True,dropout=True,regularize=False)
-	# model = mlp1(x_train.shape[-1], nClasses,2,2048,BN=True,regularize=False,lin_boost=False)
-	model = mlp_wCTC(x_train.shape[-1],nClasses,3,2048,BN=False)
-	# model = load_model('test_CP.h5')
+	# model = mlp4(x_train.shape[-1], nClasses,1,1,2048,shortcut=False,BN=True,conv=False,dropout=False,regularize=False)
+	# model = mlp1(x_train.shape[-1], nClasses,4,2048,BN=True,regularize=False,lin_boost=False)
+	model = mlp_wCTC(x_train.shape[-1],nClasses,3,2048,BN=True)
+	# model = DBN_DNN(x_train, nClasses,5,2048,batch_size=128)
+	# print 'wrapping ctc...'
+	# model = ctc_model(model)
 	# model = DBN_DNN(x_train, nClasses,5,2560,batch_size=128)
 	# model = load_model('mlp4-2x2560-cd-adam-bn-drop-conv-noshort_CP.h5')
 	# fg = gen_bracketed_data(context_len=5,for_CTC=True,fix_length=True)
-	trainNtest(model,x_train,y_train,x_test,y_test,meta,'test',fit_generator=gen_data)
+	trainNtest(model,x_train,y_train,x_test,y_test,meta,'test-tranlabs',ctc_train=False,fit_generator=gen_data)
 
 
-	# model = load_model('bestModels/best_CD.h5')
-	# print model.summary()
+	model = load_model('mlp_wCTC-3x2048-alignlabs-BN_CP.h5',custom_objects={'dummy_loss':dummy_loss, 
+														'decoder_dummy_loss':decoder_dummy_loss,
+														'ler':ler})
+	model = Model(inputs=[model.get_layer(name='x').input],
+						outputs=[model.get_layer(name='softmax').output])
+	print model.summary()
 	# getPredsFromFilelist(model,'../wsj/wsj0/single_dev.txt','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/single_dev_NN/','.sen',meta['state_freq_Train'],context_len=5,weight=0.00035457)
 	# getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores_dev2/','.sen',meta['state_freq_Train'])
-	# getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/senscores_dev_cd/','.sen',meta['state_freq_Train'],context_len=5)
-	# getPredsFromArray(model,np.load('DEV_PRED.npy'),meta['framePos_Dev'],meta['filenames_Dev'],'/home/mshah1/wsj/wsj0/senscores_dev_ci_hammad/','.sen',meta['state_freq_Train'],preds_in=True,weight=-0.00075526,offset=234.90414376)
+	getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/senscores_dev_ctc_ci/','.sen',meta['state_freq_Train'],
+							context_len=5, 
+							data_preproc_fn = lambda x: pad_sequences([x],maxlen=1000,dtype='float32',padding='post').reshape(1,1000,x.shape[-1]),
+							data_postproc_fn = lambda x: x[:,range(138)],
+							weight=0.1*0.00524545)
+	# # getPredsFromArray(model,np.load('DEV_PRED.npy'),meta['framePos_Dev'],meta['filenames_Dev'],'/home/mshah1/wsj/wsj0/senscores_dev_ci_hammad/','.sen',meta['state_freq_Train'],preds_in=True,weight=-0.00075526,offset=234.90414376)
 	# f = filter(lambda x : '22go0208.wv1.flac' in x, meta['filenames_Dev'])[0]
 	# file_idx = list(meta['filenames_Dev']).index(f)
-	# # print file_idx
-	# split = lambda x: x[sum(meta['framePos_Dev'][:file_idx]):sum(meta['framePos_Dev'][:file_idx+1])]
-	# # # pred = model.evaluate(split(x_test),split(y_test),verbose=1)
+	# print file_idx
+	# # split = lambda x: x[sum(meta['framePos_Dev'][:file_idx]):sum(meta['framePos_Dev'][:file_idx+1])]
+	# pred = model.predict(x_test[file_idx:file_idx+1],verbose=1)
+	# pred = np.array(map(lambda x: np.argmax(x,axis=-1),pred))
+	# print pred
+	# print y_test[file_idx]
 	# data = split(x_test)
 	# context_len = 5
 	# pad_top = np.zeros((context_len,data.shape[1]))
@@ -447,7 +599,7 @@ if __name__ == '__main__':
 	# print K.eval(bp), len(K.eval(bp)[0])
 	# print K.eval(out)
 
-	# # print pred
+	# print pred
 	# # writeSenScores('senScores',pred)
 	# np.save('pred.npy',np.log(pred)/np.log(1.001))
 
