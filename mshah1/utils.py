@@ -106,13 +106,13 @@ def gen_bracketed_data(context_len=None,fix_length=False,
 	return lambda x,y,nf: _gen_bracketed_data(x,y,nf,context_len,fix_length,
 						for_CTC)
 
-def plotFromCSV(modelName):
+def plotFromCSV(modelName, loss_cols=[2,5], acc_cols=[1,4]):
 	data = np.loadtxt(modelName+'.csv',skiprows=1,delimiter=',')
 	epoch = data[:,[0]]
-	acc = data[:,[1]]
-	loss = data[:,[2]]
-	val_acc = data[:,[4]]
-	val_loss = data[:,[5]]
+	acc = data[:,[acc_cols[0]]]
+	loss = data[:,[loss_cols[0]]]
+	val_acc = data[:,[acc_cols[1]]]
+	val_loss = data[:,[loss_cols[1]]]
 
 	fig, ax1 = plt.subplots()
 	ax1.plot(acc)
