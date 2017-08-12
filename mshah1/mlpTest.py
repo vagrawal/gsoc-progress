@@ -1,5 +1,5 @@
 import os
-CUDA_VISIBLE_DEVICES = '1'
+CUDA_VISIBLE_DEVICES = '3'
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 from keras.models import Sequential, Model
 from keras.optimizers import SGD,Adagrad, Adam
@@ -12,7 +12,8 @@ from keras.layers import (
 	Conv1D, 
 	Conv2D,
 	LocallyConnected2D, 
-	MaxPooling2D, 
+	MaxPooling2D,
+	AveragePooling2D, 
 	Reshape, 
 	Flatten,
 	Masking)
@@ -49,7 +50,7 @@ def mlp1(input_dim,output_dim,depth,width,dropout=False,
 	BN=False, regularize=False, lin_boost=False):
 	print locals()
 	model = Sequential()
-	model.add(Dense(width, activation='sigmoid', input_shape=(1000,input_dim),
+	model.add(Dense(width, activation='sigmoid', input_shape=(input_dim,),
 					kernel_regularizer=regularizers.l2(0.05) if regularize else None))
 	if BN:
 		model.add(BatchNormalization())
@@ -278,15 +279,15 @@ def mlp4(input_dim,output_dim,nConv,nBlocks,width, block_depth=2,
 	print locals()
 	if block_width == None:
 		block_width = width
-	inp = Input(shape=(1000,input_dim), name='x')
+	inp = Input(shape=(input_dim,), name='x')
 	x = inp
 	if conv:
 		x = Reshape((11,input_dim/11,1))(x)
 		for i in range(nConv):
 			print i
-			x = LocallyConnected2D(84,(11,8),padding='valid')(x)
+			x = LocallyConnected2D(84,(6,8),padding='valid')(x)
 			x = _bn_relu(x)
-			x = MaxPooling2D((6,6),strides=(2,2),padding='same')(x)
+			x = MaxPooling2D((6,6),strides=(1,1),padding='same')(x)
 		x = Flatten()(x)
 		x = Dense(width,
 					kernel_regularizer=regularizers.l2(0.05) if regularize else None)(x)
@@ -322,19 +323,19 @@ def mlp4(input_dim,output_dim,nConv,nBlocks,width, block_depth=2,
 		z = Dense(output_dim, name='out')(x)
 		z = Activation('softmax', name='softmax')(z)
 	model = Model(inputs=inp, outputs=z)
-	# if parallelize:
-	# 	model = make_parallel(model, len(CUDA_VISIBLE_DEVICES.split(',')))
-	# opt = Adam(lr=25/(np.sqrt(input_dim * width * output_dim)))
-	# # opt = SGD(lr=1/(np.sqrt(input_dim * width)), decay=1e-6, momentum=0.9, nesterov=True)
-	# model.compile(optimizer=opt,
-	#               loss='sparse_categorical_crossentropy',
-	#               metrics=['accuracy'])
+	if parallelize:
+		model = make_parallel(model, len(CUDA_VISIBLE_DEVICES.split(',')))
+	opt = Adam(lr=25/(np.sqrt(input_dim * width * output_dim)))
+	# opt = SGD(lr=1/(np.sqrt(input_dim * width)), decay=1e-6, momentum=0.9, nesterov=True)
+	model.compile(optimizer=opt,
+	              loss='sparse_categorical_crossentropy',
+	              metrics=['accuracy'])
 	return model
 
 def resnet_wrapper(input_dim,output_dim):
 	builder = resnet.ResnetBuilder()
-	model = builder.build_resnet_18((1,1,input_dim), output_dim, Reshape((9,input_dim/9,1)))
-	opt = Adagrad(lr=1/np.sqrt(input_dim))
+	model = builder.build_resnet_18((input_dim,), output_dim, Reshape((11,input_dim/11,1)))
+	opt = Adam(lr=10/np.sqrt(input_dim * output_dim))
 	# opt = SGD(lr=1/(np.sqrt(input_dim * width)), decay=1e-6, momentum=0.9, nesterov=True)
 	model.compile(optimizer=opt,
 	              loss='sparse_categorical_crossentropy',
@@ -351,7 +352,7 @@ def DBN_DNN(inp,nClasses,depth,width,batch_size=2048):
 	sigma = np.std(inp)
 	# sigma = 1
 	rbm = GBRBM(n_visible=inp.shape[-1],n_hidden=width,learning_rate=0.002, momentum=0.90, use_tqdm=True,sample_visible=True,sigma=sigma)
-	rbm.fit(inp,n_epoches=5,batch_size=batch_size,shuffle=True)
+	rbm.fit(inp,n_epoches=15,batch_size=batch_size,shuffle=True)
 	RBMs.append(rbm)
 	for i in range(depth - 1):
 		print 'training DBN layer', i
@@ -469,7 +470,7 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,
 		callback_arr = [ModelCheckpoint('%s_CP.h5' % modelName,save_best_only=True,verbose=1),
 						ReduceLROnPlateau(patience=5,factor=0.5,min_lr=10**(-6), verbose=1),
 						CSVLogger(modelName+'.csv',append=True)]
-		batch_size = 2
+		batch_size = 512
 		if fit_generator == None:
 			history = model.fit(x_train,y_train,epochs=100,batch_size=batch_size,
 								initial_epoch=init_epoch,
@@ -519,10 +520,12 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,
 if __name__ == '__main__':
 	print 'PROCESS-ID =', os.getpid()
 	print 'loading data...'
-	meta = np.load('wsj0_phonelabels_bracketed_mini_meta.npz')
-	x_train = np.load('wsj0_phonelabels_bracketed_mini_train.npy',mmap_mode='r')
+	meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
+	x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
 	# train_active = np.load('wsj0_phonelabels_bracketed_train_active.npy')
-	y_train = np.load('wsj0_phonelabels_bracketed_mini_trans_train_labels.npy')
+	y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
+	print x_train.shape
+	print y_train.shape
 	# end = x_train.shape[0] % 2048
 	# x_train = x_train[:-end]
 	# y_train = y_train[:-end]
@@ -532,9 +535,9 @@ if __name__ == '__main__':
 	# y_train = to_categorical(y_train, num_classes = nClasses)
 
 	print 'loading test data...'
-	x_test = np.load('wsj0_phonelabels_bracketed_mini_dev.npy',mmap_mode='r')
+	x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
 	# test_active = np.load('wsj0_phonelabels_bracketed_dev_active.npy')
-	y_test = np.load('wsj0_phonelabels_bracketed_mini_trans_dev_labels.npy')
+	y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
 	# # # end = x_test.shape[0] % 2048
 	# # # x_test = x_test[:-end]
 	# # # y_test = y_test[:-end]
@@ -545,31 +548,34 @@ if __name__ == '__main__':
 
 	print 'initializing model...'
 	# model = load_model('dbn-3x2048-sig-adagrad_CP.h5')
-	# model = mlp4(x_train.shape[-1], nClasses,1,1,2048,shortcut=False,BN=True,conv=False,dropout=False,regularize=False)
-	# model = mlp1(x_train.shape[-1], nClasses,4,2048,BN=True,regularize=False,lin_boost=False)
-	model = mlp_wCTC(x_train.shape[-1],nClasses,3,2048,BN=True)
-	# model = DBN_DNN(x_train, nClasses,5,2048,batch_size=128)
+	# model = resnet_wrapper(x_train.shape[-1],nClasses)
+	# model = mlp4(x_train.shape[-1], nClasses,2,10,2048,shortcut=True,BN=True,conv=True,dropout=False,regularize=True)
+	# model = mlp1(x_train.shape[-1], nClasses,3,2048,BN=True,regularize=False,lin_boost=False)
+	# model = mlp_wCTC(x_train.shape[-1],nClasses,3,2048,BN=True)
+	model = DBN_DNN(x_train, nClasses,5,3072,batch_size=128)
 	# print 'wrapping ctc...'
 	# model = ctc_model(model)
 	# model = DBN_DNN(x_train, nClasses,5,2560,batch_size=128)
 	# model = load_model('mlp4-2x2560-cd-adam-bn-drop-conv-noshort_CP.h5')
 	# fg = gen_bracketed_data(context_len=5,for_CTC=True,fix_length=True)
-	trainNtest(model,x_train,y_train,x_test,y_test,meta,'test-tranlabs',ctc_train=False,fit_generator=gen_data)
+	trainNtest(model,x_train,y_train,x_test,y_test,meta,'dbn-5x3072',ctc_train=False)
 
 
-	model = load_model('mlp_wCTC-3x2048-alignlabs-BN_CP.h5',custom_objects={'dummy_loss':dummy_loss, 
-														'decoder_dummy_loss':decoder_dummy_loss,
-														'ler':ler})
-	model = Model(inputs=[model.get_layer(name='x').input],
-						outputs=[model.get_layer(name='softmax').output])
-	print model.summary()
-	# getPredsFromFilelist(model,'../wsj/wsj0/single_dev.txt','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/single_dev_NN/','.sen',meta['state_freq_Train'],context_len=5,weight=0.00035457)
-	# getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores_dev2/','.sen',meta['state_freq_Train'])
-	getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/senscores_dev_ctc_ci/','.sen',meta['state_freq_Train'],
-							context_len=5, 
-							data_preproc_fn = lambda x: pad_sequences([x],maxlen=1000,dtype='float32',padding='post').reshape(1,1000,x.shape[-1]),
-							data_postproc_fn = lambda x: x[:,range(138)],
-							weight=0.1*0.00524545)
+	# model = load_model('mlp4_1x2048-conv-BN_CP.h5',custom_objects={'dummy_loss':dummy_loss, 
+	# 													'decoder_dummy_loss':decoder_dummy_loss,
+	# 													'ler':ler})
+	# # model = Model(inputs=[model.get_layer(name='x').input],
+	# # 					outputs=[model.get_layer(name='softmax').output])
+	# print model.summary()
+	# # # # getPredsFromFilelist(model,'../wsj/wsj0/single_dev.txt','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/single_dev_NN/','.sen',meta['state_freq_Train'],context_len=5,weight=0.00035457)
+	# # # # getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores_dev2/','.sen',meta['state_freq_Train'])
+	# getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/senscores_dev_conv_ci/','.sen',meta['state_freq_Train'],
+	# 						context_len=5, 
+	# 						# data_preproc_fn = lambda x: pad_sequences([x],maxlen=1000,dtype='float32',padding='post').reshape(1,1000,x.shape[-1]),
+	# 						# data_postproc_fn = lambda x: x[:,range(138)] / np.sum(x[:,range(138)], axis=1).reshape(-1,1),
+	# 						weight=0.1*0.01284038)
+	# *0.00311573
+	# 00269236
 	# # getPredsFromArray(model,np.load('DEV_PRED.npy'),meta['framePos_Dev'],meta['filenames_Dev'],'/home/mshah1/wsj/wsj0/senscores_dev_ci_hammad/','.sen',meta['state_freq_Train'],preds_in=True,weight=-0.00075526,offset=234.90414376)
 	# f = filter(lambda x : '22go0208.wv1.flac' in x, meta['filenames_Dev'])[0]
 	# file_idx = list(meta['filenames_Dev']).index(f)

@@ -223,6 +223,7 @@ def getPredsFromFilelist(model,filelist,file_dir,file_ext,
 			preds = data_postproc_fn(preds)
 		if preds.shape[0] != data.shape[0]:
 			preds = preds[:data.shape[0]]
+			# print np.sum(preds)
 		# print preds.shape
 		res_file_path = res_dir+files[i]+res_ext
 		dirname = os.path.dirname(res_file_path)

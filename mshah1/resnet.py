@@ -198,12 +198,12 @@ class ResnetBuilder(object):
             The keras `Model`.
         """
         _handle_dim_ordering()
-        if len(input_shape) != 3:
-            raise Exception("Input shape should be a tuple (nb_channels, nb_rows, nb_cols)")
+        # if len(input_shape) != 3:
+        #     raise Exception("Input shape should be a tuple (nb_channels, nb_rows, nb_cols)")
 
-        # Permute dimension order if necessary
-        if K.image_dim_ordering() == 'tf':
-            input_shape = (input_shape[1], input_shape[2], input_shape[0])
+        # # Permute dimension order if necessary
+        # if K.image_dim_ordering() == 'tf':
+        #     input_shape = (input_shape[1], input_shape[2], input_shape[0])
 
         # Load function from str if needed.
         block_fn = _get_block(block_fn)

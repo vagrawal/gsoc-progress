@@ -104,18 +104,18 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 		pDict = loadDict(pDict_file)
 		trans = loadTrans(trans_file,pDict)
 		label_dict = trans2labels(trans, phone2state)
-		stseg_files_train = filter(lambda x: x.split('/')[-1][:-4] in label_dict, train_files)[:2400]
-		stseg_files_test = filter(lambda x: x.split('/')[-1][:-4] in label_dict, test_files)[:110]
-		stseg_files_dev = filter(lambda x: x.split('/')[-1][:-4] in label_dict, dev_files)[:33]
+		stseg_files_train = filter(lambda x: x.split('/')[-1][:-4] in label_dict, train_files)
+		stseg_files_test = filter(lambda x: x.split('/')[-1][:-4] in label_dict, test_files)
+		stseg_files_dev = filter(lambda x: x.split('/')[-1][:-4] in label_dict, dev_files)
 		stseg_files = stseg_files_train + stseg_files_dev + stseg_files_test
 		print "Training Files: %d 	Dev Files: %d	Testing Files: %d" % (len(stseg_files_train), len(stseg_files_dev), len(stseg_files_test))
 	else:
 		stseg_files_train = map(lambda x: x.split('/')[-1][:-3]+'stseg.txt',train_files)
 		stseg_files_test = map(lambda x: x.split('/')[-1][:-3]+'stseg.txt',test_files)
 		stseg_files_dev = map(lambda x: x.split('/')[-1][:-3]+'stseg.txt',dev_files)
-		stseg_files_train = filter(lambda x: os.path.exists(DB_path + stseg_path + x), stseg_files_train)[:2400]
-		stseg_files_test = filter(lambda x: os.path.exists(DB_path + stseg_path + x), stseg_files_test)[:110]
-		stseg_files_dev = filter(lambda x: os.path.exists(DB_path + stseg_path + x), stseg_files_dev)[:33]
+		stseg_files_train = filter(lambda x: os.path.exists(DB_path + stseg_path + x), stseg_files_train)
+		stseg_files_test = filter(lambda x: os.path.exists(DB_path + stseg_path + x), stseg_files_test)
+		stseg_files_dev = filter(lambda x: os.path.exists(DB_path + stseg_path + x), stseg_files_dev)
 
 		stseg_files = stseg_files_train + stseg_files_dev + stseg_files_test
 		print "Training Files: %d 	Dev Files: %d	Testing Files: %d" % (len(stseg_files_train), len(stseg_files_dev), len(stseg_files_test))
@@ -249,25 +249,25 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 	# t = threading.Thread(target=ping)
 	# t.start()
 	if context_len != None:
-		# np.save('wsj0_phonelabels_bracketed_mini_train.npy',X_Train)
-		# np.save('wsj0_phonelabels_bracketed_mini_test.npy',X_Test)
-		# np.save('wsj0_phonelabels_bracketed_mini_dev.npy',X_Dev)
-		np.save('wsj0_phonelabels_bracketed_mini_trans_train_labels.npy',Y_Train)
-		np.save('wsj0_phonelabels_bracketed_mini_trans_test_labels.npy',Y_Test)
-		np.save('wsj0_phonelabels_bracketed_mini_trans_dev_labels.npy',Y_Dev)
+		np.save('wsj0_phonelabels_bracketed_train.npy',X_Train)
+		np.save('wsj0_phonelabels_bracketed_test.npy',X_Test)
+		np.save('wsj0_phonelabels_bracketed_dev.npy',X_Dev)
+		np.save('wsj0_phonelabels_bracketed_train_labels.npy',Y_Train)
+		np.save('wsj0_phonelabels_bracketed_test_labels.npy',Y_Test)
+		np.save('wsj0_phonelabels_bracketed_dev_labels.npy',Y_Dev)
 		if make_graph:
 			np.save('wsj0_phonelabels_bracketed_train_active.npy',active_states_Train)
 			np.save('wsj0_phonelabels_bracketed_test_active.npy',active_states_Test)
 			np.save('wsj0_phonelabels_bracketed_dev_active.npy',active_states_Dev)
-		# np.savez('wsj0_phonelabels_bracketed_mini_meta.npz',framePos_Train=framePos_Train,
-		# 												framePos_Test=framePos_Test,
-		# 												framePos_Dev=framePos_Dev,
-		# 												filenames_Train=filenames_Train,
-		# 												filenames_Dev=filenames_Dev,
-		# 												filenames_Test=filenames_Test,
-		# 												state_freq_Train=state_freq_Train,
-		# 												state_freq_Dev=state_freq_Dev,
-		# 												state_freq_Test=state_freq_Test)
+		np.savez('wsj0_phonelabels_bracketed__meta.npz',framePos_Train=framePos_Train,
+														framePos_Test=framePos_Test,
+														framePos_Dev=framePos_Dev,
+														filenames_Train=filenames_Train,
+														filenames_Dev=filenames_Dev,
+														filenames_Test=filenames_Test,
+														state_freq_Train=state_freq_Train,
+														state_freq_Dev=state_freq_Dev,
+														state_freq_Test=state_freq_Test)
 	else:	
 		np.save('wsj0_phonelabels_train.npy',X_Train)
 		np.save('wsj0_phonelabels_test.npy',X_Test)
@@ -307,7 +307,7 @@ def normalizeByUtterance():
 #print(read_sen_labels_from_mdef('../wsj_all_cd30.mllt_cd_cont_4000/mdef'))
 # frame2state('../wsj/wsj0/statesegdir/40po031e.wv2.flac.stseg.txt', '../wsj_all_cd30.mllt_cd_cont_4000/mdef')
 genDataset('../wsj/wsj0/','etc/wsj0_train.fileids','etc/wsj0_dev.fileids','etc/wsj0_test.fileids','feat_cd_mls/','stateseg_ci_dir/','../en_us.ci_cont/mdef',
-			keep_utts=True, ctc_labels=True, context_len=5, 
+			keep_utts=False, ctc_labels=False, context_len=5, 
 			trans_file='../wsj/wsj0/etc/wsj0.transcription', 
 			pDict_file='../wsj/wsj0/etc/cmudict.0.6d.wsj0')
 # normalizeByUtterance()
