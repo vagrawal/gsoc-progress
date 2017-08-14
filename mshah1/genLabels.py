@@ -9,6 +9,8 @@ import utils
 from keras.preprocessing.sequence import pad_sequences
 import ctc
 import fst
+import librosa
+
 done = 0
 def ping():
 	curr_time = int(time.time())
@@ -87,16 +89,22 @@ def trans2labels(trans,phone2state):
 def genDataset(DB_path, train_flist, dev_flist, test_flist, 
 				feat_path, stseg_path, mdef_fname, context_len=None, 
 				keep_utts=False, ctc_labels=False, pDict_file=None,
-				trans_file=None, make_graph=False):
+				trans_file=None, make_graph=False,cqt=False,
+				max_len=None,n_deltas=0):
 	global done
 	train_files = np.loadtxt(DB_path+train_flist,dtype=str)
-	train_files = map(lambda x: DB_path+feat_path+x+'.mls',train_files)
+	if cqt:
+		keep_utts = True
+		ext = '.wav'
+	else:
+		ext = '.mls'	
+	train_files = map(lambda x: DB_path+feat_path+x+ext,train_files)
 	train_files = filter(lambda x: 'tr_' in x and
 									'wv1' in x, train_files)
 	test_files = np.loadtxt(DB_path+test_flist,dtype=str)
-	test_files = map(lambda x: DB_path+feat_path+x+'.mls',test_files)
+	test_files = map(lambda x: DB_path+feat_path+x+ext,test_files)
 	dev_files = np.loadtxt(DB_path+dev_flist,dtype=str)
-	dev_files = map(lambda x: DB_path+feat_path+x+'.mls',dev_files)
+	dev_files = map(lambda x: DB_path+feat_path+x+ext,dev_files)
 
 	phone2state = read_sen_labels_from_mdef(mdef_fname,onlyPhone=False)
 
@@ -144,6 +152,9 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 	state_freq_Train = [0]*n_states
 	state_freq_Dev = [0]*n_states
 	state_freq_Test = [0]*n_states
+
+
+
 	for i in range(len(stseg_files)):
 		if i < len(stseg_files_train):
 			# print '\n train'
@@ -178,7 +189,12 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 		f = stseg_files[i]
 		
 		[data_file] = filter(lambda x: f[:-9] in x, files)
-		data = utils.readMFC(data_file,40).astype('float32')
+		if cqt:
+			y,fs=librosa.load(data_file,sr=None)
+			data = np.absolute(librosa.cqt(y,sr=fs,window=np.hamming).T)
+			# print data.shape
+		else:
+			data = utils.readMFC(data_file,40).astype('float32')
 		data = scaler.fit_transform(data)
 
 		if ctc_labels:
@@ -190,15 +206,9 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 				t2 = ctc.gen_utt_graph(trans[data_file.split('/')[-1][:-4]],phone2state)
 				assert set([e for (e,_) in t.osyms.items()]) == set([e for (e,_) in t2.isyms.items()])
 				t.osyms = t2.isyms
-				# ctc.print_graph(t)
-				# print [e for (e,_) in t.osyms.items()]
-				# print [e for (e,_) in t2.isyms.items()]
 				t3 = t >> t2
 				parents = ctc.gen_parents_dict(t3)
 				y_t_s = ctc.make_prob_dict(t3,data.shape[0],n_states)
-				# print y_t_s
-				# alpha = ctc.calc_alpha(data.shape[0],labels,y_t_s)
-				# beta = ctc.calc_beta(data.shape[0],labels,y_t_s)
 				active_state.append(y_t_s)
 			# print active_state
 			nFrames = data.shape[0]
@@ -235,15 +245,18 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 			assert(len(allLabels) == len(allData))
 	# print allData
 	print len(allData), len(allLabels)
+	if max_len == None:
+		max_len = 100 * (max(map(len,X_Train)) / 100)
+	print 'max_len', max_len
 	if keep_utts:
-		X_Train = pad_sequences(X_Train,maxlen=1000,dtype='float32',padding='post')
-		Y_Train = pad_sequences(Y_Train,maxlen=1000,dtype='float32',padding='post',value=n_states)
+		X_Train = pad_sequences(X_Train,maxlen=max_len,dtype='float32',padding='post')
+		Y_Train = pad_sequences(Y_Train,maxlen=max_len,dtype='float32',padding='post',value=n_states)
 		Y_Train = Y_Train.reshape(Y_Train.shape[0],Y_Train.shape[1],1)
-		X_Dev = pad_sequences(X_Dev,maxlen=1000,dtype='float32',padding='post')
-		Y_Dev = pad_sequences(Y_Dev,maxlen=1000,dtype='float32',padding='post',value=n_states)
+		X_Dev = pad_sequences(X_Dev,maxlen=max_len,dtype='float32',padding='post')
+		Y_Dev = pad_sequences(Y_Dev,maxlen=max_len,dtype='float32',padding='post',value=n_states)
 		Y_Dev = Y_Dev.reshape(Y_Dev.shape[0],Y_Dev.shape[1],1)
-		X_Test = pad_sequences(X_Test,maxlen=1000,dtype='float32',padding='post')
-		Y_Test = pad_sequences(Y_Test,maxlen=1000,dtype='float32',padding='post',value=n_states)
+		X_Test = pad_sequences(X_Test,maxlen=max_len,dtype='float32',padding='post')
+		Y_Test = pad_sequences(Y_Test,maxlen=max_len,dtype='float32',padding='post',value=n_states)
 		Y_Test = Y_Test.reshape(Y_Test.shape[0],Y_Test.shape[1],1)
 	# np.savez('wsj0_phonelabels_NFrames',NFrames_Train=NFrames_Train,NFrames_Test=NFrames_Test)
 	# t = threading.Thread(target=ping)
@@ -259,7 +272,7 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 			np.save('wsj0_phonelabels_bracketed_train_active.npy',active_states_Train)
 			np.save('wsj0_phonelabels_bracketed_test_active.npy',active_states_Test)
 			np.save('wsj0_phonelabels_bracketed_dev_active.npy',active_states_Dev)
-		np.savez('wsj0_phonelabels_bracketed__meta.npz',framePos_Train=framePos_Train,
+		np.savez('wsj0_phonelabels_bracketed_meta.npz',framePos_Train=framePos_Train,
 														framePos_Test=framePos_Test,
 														framePos_Dev=framePos_Dev,
 														filenames_Train=filenames_Train,
@@ -306,8 +319,8 @@ def normalizeByUtterance():
 	print data
 #print(read_sen_labels_from_mdef('../wsj_all_cd30.mllt_cd_cont_4000/mdef'))
 # frame2state('../wsj/wsj0/statesegdir/40po031e.wv2.flac.stseg.txt', '../wsj_all_cd30.mllt_cd_cont_4000/mdef')
-genDataset('../wsj/wsj0/','etc/wsj0_train.fileids','etc/wsj0_dev.fileids','etc/wsj0_test.fileids','feat_cd_mls/','stateseg_ci_dir/','../en_us.ci_cont/mdef',
-			keep_utts=False, ctc_labels=False, context_len=5, 
+genDataset('../wsj/wsj0/','etc/wsj0_train.fileids','etc/wsj0_dev.fileids','etc/wsj0_test.fileids','feat_cd_mls/','stateseg_cd_dir/','../en_us.cd_cont_4000/mdef',
+			keep_utts=False, context_len=5, 
 			trans_file='../wsj/wsj0/etc/wsj0.transcription', 
 			pDict_file='../wsj/wsj0/etc/cmudict.0.6d.wsj0')
 # normalizeByUtterance()

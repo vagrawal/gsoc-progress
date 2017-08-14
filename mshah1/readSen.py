@@ -30,7 +30,7 @@ def readSen(fname, print_most_prob_sen=False):
 	return np.array(data)
 
 # readSen('../wsj/wsj0/senscores/11_14_1/wsj0/si_et_20/440/440c0401.wv1.flac.sen')
-ndx_list = map(lambda x: '../wsj/wsj0/senscores_dev_conv_ci/'+x+'.sen', np.loadtxt('../wsj/wsj0/etc/wsj0_dev.fileids',dtype=str))
+ndx_list = map(lambda x: '../wsj/wsj0/senscores_dev_resnet18_ci/'+x+'.sen', np.loadtxt('../wsj/wsj0/etc/wsj0_dev.fileids',dtype=str))
 file_list = map(lambda x: '../wsj/wsj0/sendump_dev_ci/' + x, os.listdir('../wsj/wsj0/sendump_dev_ci/'))
 file_list.sort()
 file_list = file_list[:-1]

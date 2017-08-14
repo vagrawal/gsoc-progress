@@ -241,17 +241,17 @@ class ResnetBuilder(object):
         return ResnetBuilder.build(input_shape, num_outputs, basic_block, [2, 2, 2, 2], reshape_layer=reshape_layer)
 
     @staticmethod
-    def build_resnet_34(input_shape, num_outputs):
-        return ResnetBuilder.build(input_shape, num_outputs, basic_block, [3, 4, 6, 3])
+    def build_resnet_34(input_shape, num_outputs,reshape_layer=None):
+        return ResnetBuilder.build(input_shape, num_outputs, basic_block, [3, 4, 6, 3], reshape_layer=reshape_layer)
 
     @staticmethod
-    def build_resnet_50(input_shape, num_outputs):
-        return ResnetBuilder.build(input_shape, num_outputs, bottleneck, [3, 4, 6, 3])
+    def build_resnet_50(input_shape, num_outputs,reshape_layer=None):
+        return ResnetBuilder.build(input_shape, num_outputs, bottleneck, [3, 4, 6, 3], reshape_layer=reshape_layer)
 
     @staticmethod
-    def build_resnet_101(input_shape, num_outputs):
-        return ResnetBuilder.build(input_shape, num_outputs, bottleneck, [3, 4, 23, 3])
+    def build_resnet_101(input_shape, num_outputs,reshape_layer=None):
+        return ResnetBuilder.build(input_shape, num_outputs, bottleneck, [3, 4, 23, 3], reshape_layer=reshape_layer)
 
     @staticmethod
-    def build_resnet_152(input_shape, num_outputs):
-        return ResnetBuilder.build(input_shape, num_outputs, bottleneck, [3, 8, 36, 3])
+    def build_resnet_152(input_shape, num_outputs,reshape_layer=None):
+        return ResnetBuilder.build(input_shape, num_outputs, bottleneck, [3, 8, 36, 3], reshape_layer=reshape_layer)
