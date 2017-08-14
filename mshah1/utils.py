@@ -182,7 +182,7 @@ def getPredsFromArray(model,data,nFrames,filenames,res_dir,res_ext,freqs,preds_i
 		pos += nFrames[i]
 
 def getPredsFromFilelist(model,filelist,file_dir,file_ext,
-							res_dir,res_ext,freqs,n_feat=40,context_len=4,
+							res_dir,res_ext,freqs,n_feat=40,context_len=None,
 							weight=1,offset=0, data_preproc_fn=None,
 							data_postproc_fn=None):
 	with open(filelist) as f:
@@ -201,16 +201,17 @@ def getPredsFromFilelist(model,filelist,file_dir,file_ext,
 		data = readMFC(f,n_feat)
 		data = scaler.fit_transform(data)
 
-		pad_top = np.zeros((context_len,data.shape[1])) + data[0]
-		pad_bot = np.zeros((context_len,data.shape[1])) + data[-1]
-		padded_data = np.concatenate((pad_top,data),axis=0)
-		padded_data = np.concatenate((padded_data,pad_bot),axis=0)
+		if context_len != None:
+			pad_top = np.zeros((context_len,data.shape[1])) + data[0]
+			pad_bot = np.zeros((context_len,data.shape[1])) + data[-1]
+			padded_data = np.concatenate((pad_top,data),axis=0)
+			padded_data = np.concatenate((padded_data,pad_bot),axis=0)
 
-		data = []
-		for j in range(context_len,len(padded_data) - context_len):
-			new_row = padded_data[j - context_len: j + context_len + 1]
-			new_row = new_row.flatten()
-			data.append(new_row)
+			data = []
+			for j in range(context_len,len(padded_data) - context_len):
+				new_row = padded_data[j - context_len: j + context_len + 1]
+				new_row = new_row.flatten()
+				data.append(new_row)
 		data = np.array(data)
 		if data_preproc_fn != None:
 			_data = data_preproc_fn(data)
