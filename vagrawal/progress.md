@@ -270,3 +270,7 @@ Now that I can run wsj1, I will post result as soon as the model converges. At t
 I have cleaned the transcripts and created it from NDX files, to replicate the setup. I am traning on si284 and evaluating on dev93. I am getting around 15% WER from the setup, somewhat worse than expected. Now I am testing it with two convolution layers added above the filterbank coefficients and hoping that it will improve the results.
 
 I have added some documentation and code to the packaged code in the second repo.
+
+# 13 August
+
+I have corrected the code in the packaged repo. I also drew the model that we are using, as it is little different than the paper, and updated the documentation.
