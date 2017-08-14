@@ -274,3 +274,7 @@ I have added some documentation and code to the packaged code in the second repo
 # 13 August
 
 I have corrected the code in the packaged repo. I also drew the model that we are using, as it is little different than the paper, and updated the documentation.
+
+# 14 August
+
+Tested the packaged repo extensively and fixed many bugs.
