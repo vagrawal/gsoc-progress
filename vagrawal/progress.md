@@ -278,3 +278,9 @@ I have corrected the code in the packaged repo. I also drew the model that we ar
 # 14 August
 
 Tested the packaged repo extensively and fixed many bugs.
+
+# 15 August
+
+Applied some final touches to the packaged code. See the second repo.
+
+I am trying to match the WER of the published papers, as I should have better results(15% vs 9.3%) according to one paper for the almost same implementation. I am studying more of the details of others to see where I can improve.
