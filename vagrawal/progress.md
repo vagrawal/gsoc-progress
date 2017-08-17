@@ -284,3 +284,7 @@ Tested the packaged repo extensively and fixed many bugs.
 Applied some final touches to the packaged code. See the second repo.
 
 I am trying to match the WER of the published papers, as I should have better results(15% vs 9.3%) according to one paper for the almost same implementation. I am studying more of the details of others to see where I can improve.
+
+# 17 August
+
+Created basic API for prediction from audio file in the packaged code.
