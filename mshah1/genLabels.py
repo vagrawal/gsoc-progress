@@ -191,7 +191,8 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 		[data_file] = filter(lambda x: f[:-9] in x, files)
 		if cqt:
 			y,fs=librosa.load(data_file,sr=None)
-			data = np.absolute(librosa.cqt(y,sr=fs,window=np.hamming).T)
+			data = np.absolute(librosa.cqt(y,sr=fs,window=np.hamming,
+								hop_length=160, n_bins=64, bins_per_octave=32).T)
 			# print data.shape
 		else:
 			data = utils.readMFC(data_file,40).astype('float32')
@@ -215,6 +216,7 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 		else:
 			labels = frame2state(DB_path + stseg_path + f, phone2state,onlyPhone=False)
 			nFrames = min(len(labels), data.shape[0])
+			sys.stdout.write('(%d,%d) (%d,)' % (data.shape + np.array(labels).shape))
 			data = data[:nFrames]
 			labels = labels[:nFrames]
 
@@ -229,7 +231,18 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 				new_row = padded_data[j - context_len: j + context_len + 1]
 				new_row = new_row.flatten()
 				data.append(new_row)
-
+			data = np.array(data)
+		if n_deltas > 0:
+			pad_top = np.zeros((n_deltas,data.shape[1]))
+			pad_bot = np.zeros((n_deltas,data.shape[1]))
+			padded_data = np.concatenate((pad_top,data),axis=0)
+			padded_data = np.concatenate((padded_data,pad_bot),axis=0)
+			data = []
+			for j in range(n_deltas,len(padded_data) - n_deltas):
+				delta_top = padded_data - padded_data[j - n_deltas:j]
+				delta_bot = padded_data - padded_data[j:j + n_deltas]
+				new_row = delta_top + padded_data + delta_bot
+				data.append(new_row)
 		for l in labels:
 			state_freq[l] += 1
 		filenames.append(data_file)
@@ -246,18 +259,18 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 	# print allData
 	print len(allData), len(allLabels)
 	if max_len == None:
-		max_len = 100 * (max(map(len,X_Train)) / 100)
+		max_len = 100 * ((max(map(len,X_Train)) + 99)/ 100)
 	print 'max_len', max_len
-	if keep_utts:
-		X_Train = pad_sequences(X_Train,maxlen=max_len,dtype='float32',padding='post')
-		Y_Train = pad_sequences(Y_Train,maxlen=max_len,dtype='float32',padding='post',value=n_states)
-		Y_Train = Y_Train.reshape(Y_Train.shape[0],Y_Train.shape[1],1)
-		X_Dev = pad_sequences(X_Dev,maxlen=max_len,dtype='float32',padding='post')
-		Y_Dev = pad_sequences(Y_Dev,maxlen=max_len,dtype='float32',padding='post',value=n_states)
-		Y_Dev = Y_Dev.reshape(Y_Dev.shape[0],Y_Dev.shape[1],1)
-		X_Test = pad_sequences(X_Test,maxlen=max_len,dtype='float32',padding='post')
-		Y_Test = pad_sequences(Y_Test,maxlen=max_len,dtype='float32',padding='post',value=n_states)
-		Y_Test = Y_Test.reshape(Y_Test.shape[0],Y_Test.shape[1],1)
+	# if keep_utts:
+	# 	X_Train = pad_sequences(X_Train,maxlen=max_len,dtype='float32',padding='post')
+	# 	Y_Train = pad_sequences(Y_Train,maxlen=max_len,dtype='float32',padding='post',value=n_states)
+	# 	Y_Train = Y_Train.reshape(Y_Train.shape[0],Y_Train.shape[1],1)
+	# 	X_Dev = pad_sequences(X_Dev,maxlen=max_len,dtype='float32',padding='post')
+	# 	Y_Dev = pad_sequences(Y_Dev,maxlen=max_len,dtype='float32',padding='post',value=n_states)
+	# 	Y_Dev = Y_Dev.reshape(Y_Dev.shape[0],Y_Dev.shape[1],1)
+	# 	X_Test = pad_sequences(X_Test,maxlen=max_len,dtype='float32',padding='post')
+	# 	Y_Test = pad_sequences(Y_Test,maxlen=max_len,dtype='float32',padding='post',value=n_states)
+	# 	Y_Test = Y_Test.reshape(Y_Test.shape[0],Y_Test.shape[1],1)
 	# np.savez('wsj0_phonelabels_NFrames',NFrames_Train=NFrames_Train,NFrames_Test=NFrames_Test)
 	# t = threading.Thread(target=ping)
 	# t.start()
@@ -282,16 +295,17 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 														state_freq_Dev=state_freq_Dev,
 														state_freq_Test=state_freq_Test)
 	else:	
-		np.save('wsj0_phonelabels_train.npy',X_Train)
-		np.save('wsj0_phonelabels_test.npy',X_Test)
-		np.save('wsj0_phonelabels_dev.npy',X_Dev)
-		np.save('wsj0_phonelabels_train_labels.npy',Y_Train)
-		np.save('wsj0_phonelabels_train_active.npy',active_states_Train)
-		np.save('wsj0_phonelabels_test_labels.npy',Y_Test)
-		np.save('wsj0_phonelabels_test_active.npy',active_states_Test)
-		np.save('wsj0_phonelabels_dev_labels.npy',Y_Dev)
-		np.save('wsj0_phonelabels_dev_active.npy',active_states_Dev)
-		np.savez('wsj0_phonelabels_meta.npz',framePos_Train=framePos_Train,
+		np.save('wsj0_phonelabels_cqt_train.npy',X_Train)
+		np.save('wsj0_phonelabels_cqt_test.npy',X_Test)
+		np.save('wsj0_phonelabels_cqt_dev.npy',X_Dev)
+		np.save('wsj0_phonelabels_cqt_train_labels.npy',Y_Train)
+		np.save('wsj0_phonelabels_cqt_test_labels.npy',Y_Test)
+		np.save('wsj0_phonelabels_cqt_dev_labels.npy',Y_Dev)
+		# if make_graph:
+		# 	np.save('wsj0_phonelabels_train_active.npy',active_states_Train)
+		# 	np.save('wsj0_phonelabels_test_active.npy',active_states_Test)
+		# 	np.save('wsj0_phonelabels_dev_active.npy',active_states_Dev)
+		np.savez('wsj0_phonelabels_cqt_meta.npz',framePos_Train=framePos_Train,
 														framePos_Test=framePos_Test,
 														framePos_Dev=framePos_Dev,
 														filenames_Train=filenames_Train,
@@ -319,8 +333,8 @@ def normalizeByUtterance():
 	print data
 #print(read_sen_labels_from_mdef('../wsj_all_cd30.mllt_cd_cont_4000/mdef'))
 # frame2state('../wsj/wsj0/statesegdir/40po031e.wv2.flac.stseg.txt', '../wsj_all_cd30.mllt_cd_cont_4000/mdef')
-genDataset('../wsj/wsj0/','etc/wsj0_train.fileids','etc/wsj0_dev.fileids','etc/wsj0_test.fileids','feat_cd_mls/','stateseg_cd_dir/','../en_us.cd_cont_4000/mdef',
-			keep_utts=False, context_len=5, 
+genDataset('../wsj/wsj0/','etc/wsj0_train.fileids','etc/wsj0_dev.fileids','etc/wsj0_test.fileids','wav/','stateseg_ci_dir/','../en_us.ci_cont/mdef',
+			keep_utts=True, context_len=None, cqt=True,
 			trans_file='../wsj/wsj0/etc/wsj0.transcription', 
 			pDict_file='../wsj/wsj0/etc/cmudict.0.6d.wsj0')
 # normalizeByUtterance()
