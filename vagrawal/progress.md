@@ -288,3 +288,7 @@ I am trying to match the WER of the published papers, as I should have better re
 # 17 August
 
 Created basic API for prediction from audio file in the packaged code.
+
+# 18 August
+
+Experimenting.
