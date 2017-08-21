@@ -298,3 +298,7 @@ Experimenting.
 While it's too soon to conclude, but I think I will get much better result without dropout. I am getting 45% WER in just 3 epochs, and the error is decreasing rapidly. I think it might be because the model can learn the language more easily than the alignments and so it overfits for the decoding part before it can learn the alignments. This problem just gets bigger with dropout. The output that I was getting for this epoch earlier were very good english sentences but it had no relation to the audio. Another thing I look to try is to use different dropouts for the encoding and decoding layer.
 
 I hope that I can report a good number tomorrow.
+
+# 20-21 August
+
+Tried many things but final results were mostly the same. I am implementing batch normalization now.
