@@ -302,3 +302,9 @@ I hope that I can report a good number tomorrow.
 # 20-21 August
 
 Tried many things but final results were mostly the same. I am implementing batch normalization now.
+
+# 22 August
+
+Several papers have reported the naive way of batch normalizing everything is not the best way. It has to be done only in specific places. I have used the code from another repo which implemented that.
+
+I think it is the last experiment I will be able to do before the GSoC's final submission and I will report it and distribute pre-trained model of whatever I get before the final submission.
