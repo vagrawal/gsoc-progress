@@ -308,3 +308,9 @@ Tried many things but final results were mostly the same. I am implementing batc
 Several papers have reported the naive way of batch normalizing everything is not the best way. It has to be done only in specific places. I have used the code from another repo which implemented that.
 
 I think it is the last experiment I will be able to do before the GSoC's final submission and I will report it and distribute pre-trained model of whatever I get before the final submission.
+
+# 23 August
+
+After a wrong attempt, I am running the model with batch normalization. For some reason, it is running thrice as slow for training, therefore it will take some time for the training.
+
+Also reproduced and fixed a version dependent bug reported by another user.
