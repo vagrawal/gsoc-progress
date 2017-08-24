@@ -314,3 +314,7 @@ I think it is the last experiment I will be able to do before the GSoC's final s
 After a wrong attempt, I am running the model with batch normalization. For some reason, it is running thrice as slow for training, therefore it will take some time for the training.
 
 Also reproduced and fixed a version dependent bug reported by another user.
+
+# 24 August
+
+WER not decreasing with batch normalization. Used another code, as maybe it might be due to some bug in the implementation.
