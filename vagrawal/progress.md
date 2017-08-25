@@ -318,3 +318,7 @@ Also reproduced and fixed a version dependent bug reported by another user.
 # 24 August
 
 WER not decreasing with batch normalization. Used another code, as maybe it might be due to some bug in the implementation.
+
+# 25 August
+
+Still no learning with batch normalization.
