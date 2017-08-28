@@ -1,5 +1,5 @@
 import os
-CUDA_VISIBLE_DEVICES = '3'
+CUDA_VISIBLE_DEVICES = "1"
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 from keras.models import Sequential, Model
 from keras.optimizers import SGD,Adagrad, Adam
@@ -275,22 +275,21 @@ def make_dense_res_block(inp, size, width, drop=False,BN=False,regularize=False)
 def mlp4(input_dim,output_dim,nConv,nBlocks,width, block_depth=2, 
 			block_width=None, dropout=False, BN=False, 
 			parallelize=False, conv=False, regularize=False,
-			exp_boost=False, quad_boost=False, shortcut=True,
-			reshape_layer=None):
+			exp_boost=False, quad_boost=False, shortcut=True):
 	print locals()
 	if block_width == None:
 		block_width = width
-	inp = Input(shape=input_dim, name='x')
+	inp = Input(shape=(input_dim,), name='x')
 	x = inp
 	if conv:
 		if reshape_layer != None:
 			x = reshape_layer(x)
-			# x = Reshape((11,input_dim/11,1))(x)
 		for i in range(nConv):
 			print i
-			x = LocallyConnected2D(84,(6,8),padding='valid')(x)
+			x = LocallyConnected2D(84*(2**i),(8/(2**i),8/(2**i)),
+					padding='valid')(x)
 			x = _bn_relu(x)
-			x = MaxPooling2D((6,6),strides=(2,2),padding='same')(x)
+			x = MaxPooling2D((8,8),strides=(2,2),padding='same')(x)
 		x = Flatten()(x)
 		x = Dense(width,
 					kernel_regularizer=regularizers.l2(0.05) if regularize else None)(x)
@@ -486,9 +485,9 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,
 								callbacks=callback_arr)
 		else:
 			history = model.fit_generator(fit_generator(x_train,y_train,batch_size),
-											steps_per_epoch=x_train.shape[0]/batch_size, epochs=75,
+											steps_per_epoch=(sum(meta['framePos_Train']))/batch_size, epochs=75,
 											validation_data=fit_generator(x_test,y_test,batch_size),
-											validation_steps = x_test.shape[0],
+											validation_steps = (sum(meta['framePos_Dev'])) / batch_size,
 											callbacks=callback_arr)
 		model = Model(inputs=[model.get_layer(name='x').input],
 						outputs=[model.get_layer(name='softmax').output])
@@ -528,24 +527,41 @@ def trainNtest(model,x_train,y_train,x_test,y_test,meta,
 if __name__ == '__main__':
 	print 'PROCESS-ID =', os.getpid()
 	print 'loading data...'
-	meta = np.load('wsj0_phonelabels_bracketed_meta.npz')
-	x_train = np.load('wsj0_phonelabels_bracketed_train.npy',mmap_mode='r')
+<<<<<<< HEAD
+	meta = np.load('wsj0_phonelabels_ci_meta.npz')
+	x_train = np.load('wsj0_phonelabels_cd_train.npy')
 	# train_active = np.load('wsj0_phonelabels_bracketed_train_active.npy')
-	y_train = np.load('wsj0_phonelabels_bracketed_train_labels.npy')
+	y_train = np.load('wsj0_phonelabels_cd_train_labels.npy')
+=======
+	meta = np.load('wsj0_phonelabels_cqt_meta.npz')
+	x_train = np.load('wsj0_phonelabels_cqt_train.npy')
+	# train_active = np.load('wsj0_phonelabels_bracketed_train_active.npy')
+	y_train = np.load('wsj0_phonelabels_cqt_train_labels.npy')
+>>>>>>> c088cc5b75da383f62daf5ffac6689b73d41403d
 	print x_train.shape
 	print y_train.shape
 	# end = x_train.shape[0] % 2048
 	# x_train = x_train[:-end]
 	# y_train = y_train[:-end]
-	nClasses = int(np.max(y_train)) + 1
+<<<<<<< HEAD
+	nClasses = int(np.max(map(np.max,y_train))) + 1
+=======
+	nClasses = int(np.max(map(np.max,y_train)))
+>>>>>>> c088cc5b75da383f62daf5ffac6689b73d41403d
 	print nClasses
 	# print 'transforming labels...'
 	# y_train = to_categorical(y_train, num_classes = nClasses)
 
 	print 'loading test data...'
-	x_test = np.load('wsj0_phonelabels_bracketed_dev.npy',mmap_mode='r')
+<<<<<<< HEAD
+	x_test = np.load('wsj0_phonelabels_cd_dev.npy')
 	# test_active = np.load('wsj0_phonelabels_bracketed_dev_active.npy')
-	y_test = np.load('wsj0_phonelabels_bracketed_dev_labels.npy')
+	y_test = np.load('wsj0_phonelabels_cd_dev_labels.npy')
+=======
+	x_test = np.load('wsj0_phonelabels_cqt_dev.npy')
+	# test_active = np.load('wsj0_phonelabels_bracketed_dev_active.npy')
+	y_test = np.load('wsj0_phonelabels_cqt_dev_labels.npy')
+>>>>>>> c088cc5b75da383f62daf5ffac6689b73d41403d
 	# # # end = x_test.shape[0] % 2048
 	# # # x_test = x_test[:-end]
 	# # # y_test = y_test[:-end]
@@ -557,31 +573,59 @@ if __name__ == '__main__':
 	print 'initializing model...'
 	# model = load_model('dbn-3x2048-sig-adagrad_CP.h5')
 	# model = resnet_wrapper((x_train.shape[1:]),nClasses,1,1024,Reshape(x_train.shape[1:] + (1,)))
-	model = mlp4((x_train.shape[1:]), nClasses,0,1,2048,shortcut=False,BN=True,conv=False,dropout=False,regularize=False)
-	# model = mlp1(x_train.shape[-1], nClasses,3,2048,BN=True,regularize=False,lin_boost=False)
-	# model = mlp_wCTC(x_train.shape[-1],nClasses,3,2048,BN=True)
-	# model = DBN_DNN(x_train, nClasses,5,3072,batch_size=128)
-	# print 'wrapping ctc...'
-	# model = ctc_model(model)
-	# model = DBN_DNN(x_train, nClasses,5,2560,batch_size=128)
-	# model = load_model('mlp4-2x2560-cd-adam-bn-drop-conv-noshort_CP.h5')
-	# fg = gen_bracketed_data(context_len=5,for_CTC=True,fix_length=True)
-	trainNtest(model,x_train,y_train,x_test,y_test,meta,'dbn-5x3072',ctc_train=False)
+<<<<<<< HEAD
+	# model = mlp4(x_train[0].shape[-1] * 15, nClasses,2,3,2048,
+	# 				shortcut=True,BN=True,conv=True,dropout=True,
+	# 				regularize=False,reshape_layer=Reshape((15,x_train[0].shape[-1],1)))
+=======
+	model = mlp4(x_train[0].shape[-1] * 21, nClasses,1,1,2048,
+					shortcut=False,BN=True,conv=True,dropout=False,
+					regularize=False)
+>>>>>>> c088cc5b75da383f62daf5ffac6689b73d41403d
+	# model = mlp1(x_train.shape[-1] * 11, nClasses,3,2048,BN=True,regularize=False,lin_boost=False)
+	# # model = mlp_wCTC(x_train.shape[-1],nClasses,3,2048,BN=True)
+	# # model = DBN_DNN(x_train, nClasses,5,3072,batch_size=128)
+	# # print 'wrapping ctc...'
+	# # model = ctc_model(model)
+	# # model = DBN_DNN(x_train, nClasses,5,2560,batch_size=128)
+	# # model = load_model('mlp4-2x2560-cd-adam-bn-drop-conv-noshort_CP.h5')
+<<<<<<< HEAD
+	# fg = gen_bracketed_data(context_len=7)
+	# trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-3x2048-2conv_cd-7f-drop-BN',ctc_train=False,fit_generator=fg)
 
+	meta = np.load('wsj0_phonelabels_meta.npz')
+	model = load_model('mlp4-1x2048-conv-BN_CP.h5',custom_objects={'dummy_loss':dummy_loss, 
+														'decoder_dummy_loss':decoder_dummy_loss,
+														'ler':ler})
+	# model = Model(inputs=[model.get_layer(name='x').input],
+	# 					outputs=[model.get_layer(name='softmax').output])
+	print model.summary()
+	# # # getPredsFromFilelist(model,'../wsj/wsj0/single_dev.txt','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/single_dev_NN/','.sen',meta['state_freq_Train'],context_len=5,weight=0.00035457)
+	# # # getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores_dev2/','.sen',meta['state_freq_Train'])
+	getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/senscores_dev_conv_cd/','.sen',meta['state_freq_Train'],
+							context_len=5, 
+							# data_preproc_fn = lambda x: pad_sequences([x],maxlen=1000,dtype='float32',padding='post').reshape(1,1000,x.shape[-1]),
+							# data_postproc_fn = lambda x: x[:,range(138)] / np.sum(x[:,range(138)], axis=1).reshape(-1,1),
+							weight=0.001,n_feat=40)
+=======
+	fg = gen_bracketed_data(context_len=10)
+	trainNtest(model,x_train,y_train,x_test,y_test,meta,'mlp4-1x2048-conv-cqt-BN',ctc_train=False,fit_generator=fg)
 
-	# model = load_model('model_4_138pad',custom_objects={'dummy_loss':dummy_loss, 
-	# 													'decoder_dummy_loss':decoder_dummy_loss,
-	# 													'ler':ler})
-	# # model = Model(inputs=[model.get_layer(name='x').input],
-	# # 					outputs=[model.get_layer(name='softmax').output])
+	# meta = np.load('wsj0_phonelabels_meta.npz')
+	# model = load_model('dbn-5x3072_CP.h5',custom_objects={'dummy_loss':dummy_loss, 
+														# 'decoder_dummy_loss':decoder_dummy_loss,
+														# 'ler':ler})
+	# model = Model(inputs=[model.get_layer(name='x').input],
+	# 					outputs=[model.get_layer(name='softmax').output])
 	# print model.summary()
 	# # # # getPredsFromFilelist(model,'../wsj/wsj0/single_dev.txt','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/single_dev_NN/','.sen',meta['state_freq_Train'],context_len=5,weight=0.00035457)
 	# # # # getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_ci_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores_dev2/','.sen',meta['state_freq_Train'])
-	# getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_ci_dev_mls/','.mfc','/home/mshah1/wsj/wsj0/senscores_dev_hammad_ci/','.sen',meta['state_freq_Train'],
-	# 						context_len=1, 
-	# 						data_preproc_fn = lambda x: pad_sequences([x],maxlen=1000,dtype='float32',padding='post').reshape(1,1000,x.shape[-1]),
-	# 						data_postproc_fn = lambda x: x[:,range(138)] / np.sum(x[:,range(138)], axis=1).reshape(-1,1),
-	# 						weight=0.1,n_feat=25)
+	# getPredsFromFilelist(model,'../wsj/wsj0/etc/wsj0_dev.fileids','/home/mshah1/wsj/wsj0/feat_cd_mls/','.mls','/home/mshah1/wsj/wsj0/senscores_dev_conv_cd/','.sen',meta['state_freq_Train'],
+	# 						context_len=10, 
+	# 						# data_preproc_fn = lambda x: pad_sequences([x],maxlen=1000,dtype='float32',padding='post').reshape(1,1000,x.shape[-1]),
+	# 						# data_postproc_fn = lambda x: x[:,range(138)] / np.sum(x[:,range(138)], axis=1).reshape(-1,1),
+	# 						weight=0.01,n_feat=40)
+>>>>>>> c088cc5b75da383f62daf5ffac6689b73d41403d
 	# *0.00311573
 	# 00269236
 	# # getPredsFromArray(model,np.load('DEV_PRED.npy'),meta['framePos_Dev'],meta['filenames_Dev'],'/home/mshah1/wsj/wsj0/senscores_dev_ci_hammad/','.sen',meta['state_freq_Train'],preds_in=True,weight=-0.00075526,offset=234.90414376)
@@ -617,4 +661,4 @@ if __name__ == '__main__':
 	# # writeSenScores('senScores',pred)
 	# np.save('pred.npy',np.log(pred)/np.log(1.001))
 
-	# plotFromCSV('mlp4-2x2560-cd-adam-bn-drop-conv-noshort')
+	# plotFromCSV('mlp4-1x2048-conv-cqt-BN')

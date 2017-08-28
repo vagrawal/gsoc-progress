@@ -39,7 +39,7 @@ def ctc_labels(labels, blank_labels = []):
 				if l_curr != labels[i-1]:
 					new_labels.append(l_curr)
 	return np.array(new_labels)
-def _gen_bracketed_data(x,y,nFrames,
+def _gen_bracketed_data_2D(x,y,nFrames,
 						context_len,fix_length,
 						for_CTC):
 	max_len = ((np.max(nFrames) + 50)/100) * 100 #rounding off to the nearest 100
@@ -101,10 +101,49 @@ def _gen_bracketed_data(x,y,nFrames,
 				yield (data,labels)
 			pos += nFrames[i]
 
+def _gen_bracketed_data_3D(x,y,batch_size,context_len):
+	epoch_no = 1
+	while 1:
+		print epoch_no
+		batch_data = []
+		batch_labels = []
+		for i in range(len(x)):
+			data = x[i]
+			labels = y[i]
+			if context_len != None:
+				pad_top = np.zeros((context_len,data.shape[1]))
+				pad_bot = np.zeros((context_len,data.shape[1]))
+				padded_data = np.concatenate((pad_top,data),axis=0)
+				padded_data = np.concatenate((padded_data,pad_bot),axis=0)
+
+				data = []
+				for j in range(context_len,len(padded_data) - context_len):
+					new_row = padded_data[j - context_len: j + context_len + 1]
+					new_row = new_row.flatten()
+					data.append(new_row)
+				data = np.array(data)
+			seq_len = 0
+			while seq_len < len(data) and data[seq_len].any():
+				seq_len += 1
+			idxs = range(seq_len)
+			np.random.shuffle(idxs)
+			for j in idxs:
+				if len(batch_data) < batch_size:
+					batch_data.append(data[j])
+					batch_labels.append(labels[j])
+				else:
+					batch_data = np.array(batch_data)
+					batch_labels = np.array(batch_labels)
+					yield(batch_data,batch_labels)
+					batch_data = []
+					batch_labels = []
+		epoch_no += 1
+
 def gen_bracketed_data(context_len=None,fix_length=False,
 						for_CTC=False):
-	return lambda x,y,nf: _gen_bracketed_data(x,y,nf,context_len,fix_length,
-						for_CTC)
+	return lambda x,y,batch_size: _gen_bracketed_data_3D(x,y,batch_size,context_len)
+	# return lambda x,y,nf: _gen_bracketed_data(x,y,nf,context_len,fix_length,
+	# 					for_CTC)
 
 def plotFromCSV(modelName, loss_cols=[2,5], acc_cols=[1,4]):
 	data = np.loadtxt(modelName+'.csv',skiprows=1,delimiter=',')
@@ -142,7 +181,7 @@ endhdr
 """
 	s += struct.pack('I',0x11223344)
 	# print freqs
-	scores /= freqs + (1.0 / len(freqs))
+	# scores /= freqs + (1.0 / len(freqs))
 	scores = np.log(scores)/np.log(1.0001)
 	scores *= -1
 	scores -= np.min(scores,axis=1).reshape(-1,1)

@@ -19,7 +19,7 @@ def readSen(fname, print_most_prob_sen=False):
 			continue
 		n_active = struct.unpack('h',v)[0]
 		# print n_active
-		assert n_active == 138
+		assert n_active == 4138
 
 		v = f.read(2*n_active)
 		scores = list(struct.unpack('%sh' % n_active, v))
@@ -30,8 +30,10 @@ def readSen(fname, print_most_prob_sen=False):
 	return np.array(data)
 
 # readSen('../wsj/wsj0/senscores/11_14_1/wsj0/si_et_20/440/440c0401.wv1.flac.sen')
-ndx_list = map(lambda x: '../wsj/wsj0/senscores_dev_resnet18_ci/'+x+'.sen', np.loadtxt('../wsj/wsj0/etc/wsj0_dev.fileids',dtype=str))
-file_list = map(lambda x: '../wsj/wsj0/sendump_dev_ci/' + x, os.listdir('../wsj/wsj0/sendump_dev_ci/'))
+ndx_list = map(lambda x: '../wsj/wsj0/senscores_dev_conv_cd/'+x+'.sen', np.loadtxt('../wsj/wsj0/etc/wsj0_dev.fileids',dtype=str))
+
+file_list = map(lambda x: '../wsj/wsj0/sendump_dev_cd/' + x, os.listdir('../wsj/wsj0/sendump_dev_ci/'))
+
 file_list.sort()
 file_list = file_list[:-1]
 # ndx_list = ['../wsj/wsj0/single_dev_NN/11_14_1/wsj0/si_et_20/445/445c0403.wv1.flac.sen']
@@ -63,9 +65,9 @@ x = np.array(x).reshape(-1,1)
 y = np.array(y).reshape(-1,1)
 print x.shape, y.shape
 data = np.concatenate((x,y),axis=1)
-np.save('data4regression.npy',data)
+# np.save('data4regression.npy',data)
 
-data = np.load('data4regression.npy')
+# data = np.load('data4regression.npy')
 lreg = LinearRegression(normalize=True,n_jobs=-1)
 lreg.fit(data[:,[1]],data[:,[0]])
 print lreg.coef_, lreg.intercept_
