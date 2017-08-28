@@ -260,6 +260,7 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 	if max_len == None:
 		max_len = 100 * ((max(map(len,X_Train)) + 99)/ 100)
 	print 'max_len', max_len
+<<<<<<< HEAD
 	if keep_utts and pad:
 		X_Train = pad_sequences(X_Train,maxlen=max_len,dtype='float32',padding='post')
 		Y_Train = pad_sequences(Y_Train,maxlen=max_len,dtype='float32',padding='post',value=n_states)
@@ -270,6 +271,18 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 		X_Test = pad_sequences(X_Test,maxlen=max_len,dtype='float32',padding='post')
 		Y_Test = pad_sequences(Y_Test,maxlen=max_len,dtype='float32',padding='post',value=n_states)
 		Y_Test = Y_Test.reshape(Y_Test.shape[0],Y_Test.shape[1],1)
+=======
+	# if keep_utts:
+	# 	X_Train = pad_sequences(X_Train,maxlen=max_len,dtype='float32',padding='post')
+	# 	Y_Train = pad_sequences(Y_Train,maxlen=max_len,dtype='float32',padding='post',value=n_states)
+	# 	Y_Train = Y_Train.reshape(Y_Train.shape[0],Y_Train.shape[1],1)
+	# 	X_Dev = pad_sequences(X_Dev,maxlen=max_len,dtype='float32',padding='post')
+	# 	Y_Dev = pad_sequences(Y_Dev,maxlen=max_len,dtype='float32',padding='post',value=n_states)
+	# 	Y_Dev = Y_Dev.reshape(Y_Dev.shape[0],Y_Dev.shape[1],1)
+	# 	X_Test = pad_sequences(X_Test,maxlen=max_len,dtype='float32',padding='post')
+	# 	Y_Test = pad_sequences(Y_Test,maxlen=max_len,dtype='float32',padding='post',value=n_states)
+	# 	Y_Test = Y_Test.reshape(Y_Test.shape[0],Y_Test.shape[1],1)
+>>>>>>> 296b7069e6d7c37cc048c3ef06044a555a74b2a7
 	# np.savez('wsj0_phonelabels_NFrames',NFrames_Train=NFrames_Train,NFrames_Test=NFrames_Test)
 	# t = threading.Thread(target=ping)
 	# t.start()
@@ -300,10 +313,17 @@ def genDataset(DB_path, train_flist, dev_flist, test_flist,
 		np.save('wsj0_phonelabels_cqt_train_labels.npy',Y_Train)
 		np.save('wsj0_phonelabels_cqt_test_labels.npy',Y_Test)
 		np.save('wsj0_phonelabels_cqt_dev_labels.npy',Y_Dev)
+<<<<<<< HEAD
 		if make_graph:
 			np.save('wsj0_phonelabels_train_active.npy',active_states_Train)
 			np.save('wsj0_phonelabels_test_active.npy',active_states_Test)
 			np.save('wsj0_phonelabels_dev_active.npy',active_states_Dev)
+=======
+		# if make_graph:
+		# 	np.save('wsj0_phonelabels_train_active.npy',active_states_Train)
+		# 	np.save('wsj0_phonelabels_test_active.npy',active_states_Test)
+		# 	np.save('wsj0_phonelabels_dev_active.npy',active_states_Dev)
+>>>>>>> 296b7069e6d7c37cc048c3ef06044a555a74b2a7
 		np.savez('wsj0_phonelabels_cqt_meta.npz',framePos_Train=framePos_Train,
 														framePos_Test=framePos_Test,
 														framePos_Dev=framePos_Dev,

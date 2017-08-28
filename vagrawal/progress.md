@@ -284,3 +284,45 @@ Tested the packaged repo extensively and fixed many bugs.
 Applied some final touches to the packaged code. See the second repo.
 
 I am trying to match the WER of the published papers, as I should have better results(15% vs 9.3%) according to one paper for the almost same implementation. I am studying more of the details of others to see where I can improve.
+
+# 17 August
+
+Created basic API for prediction from audio file in the packaged code.
+
+# 18 August
+
+Experimenting.
+
+# 19 August
+
+While it's too soon to conclude, but I think I will get much better result without dropout. I am getting 45% WER in just 3 epochs, and the error is decreasing rapidly. I think it might be because the model can learn the language more easily than the alignments and so it overfits for the decoding part before it can learn the alignments. This problem just gets bigger with dropout. The output that I was getting for this epoch earlier were very good english sentences but it had no relation to the audio. Another thing I look to try is to use different dropouts for the encoding and decoding layer.
+
+I hope that I can report a good number tomorrow.
+
+# 20-21 August
+
+Tried many things but final results were mostly the same. I am implementing batch normalization now.
+
+# 22 August
+
+Several papers have reported the naive way of batch normalizing everything is not the best way. It has to be done only in specific places. I have used the code from another repo which implemented that.
+
+I think it is the last experiment I will be able to do before the GSoC's final submission and I will report it and distribute pre-trained model of whatever I get before the final submission.
+
+# 23 August
+
+After a wrong attempt, I am running the model with batch normalization. For some reason, it is running thrice as slow for training, therefore it will take some time for the training.
+
+Also reproduced and fixed a version dependent bug reported by another user.
+
+# 24 August
+
+WER not decreasing with batch normalization. Used another code, as maybe it might be due to some bug in the implementation.
+
+# 25 August
+
+Still no learning with batch normalization.
+
+# 26-27 August
+
+Added convolutional features for attention. Also interleaved convolutional layers between LSTM layers. It looks learning is improved. I plan to wrap it all up tomorrow.
