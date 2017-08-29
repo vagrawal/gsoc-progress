@@ -322,3 +322,11 @@ WER not decreasing with batch normalization. Used another code, as maybe it migh
 # 25 August
 
 Still no learning with batch normalization.
+
+# 26-27 August
+
+Added convolutional features for attention. Also interleaved convolutional layers between LSTM layers. It looks learning is improved. I plan to wrap it all up tomorrow.
+
+# 28 August
+
+Wrapping it up. Will submit a pull request tomorrow with pre-trained model.
