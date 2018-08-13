@@ -330,3 +330,7 @@ Added convolutional features for attention. Also interleaved convolutional layer
 # 28 August
 
 Wrapping it up. Will submit a pull request tomorrow with pre-trained model.
+
+# 29 - 30 August
+
+Made changes to the model due to few problems. I have restarted the training, and will post a pre-trained model soon.
